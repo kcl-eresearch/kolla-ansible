@@ -206,9 +206,10 @@ for Ceph includes following steps:
 #. Copy Ceph configuration file to ``/etc/kolla/config/manila/ceph.conf``
 #. Copy Ceph keyring to ``/etc/kolla/config/manila/<ceph_manila_keyring>``
 
-#. If using multiple filesystems (Ceph Pacific+), set ``ceph_manila_fs_name``
-    in ``/etc/kolla/globals.yml`` (default: undefined, meaning use the first
-    found filesystem)
+#. If using multiple filesystems (Ceph Pacific+), set ``manila_cephfs_filesystem_name``
+   in ``/etc/kolla/globals.yml`` to the name of the Ceph filesystem Manila
+   should use. By default, Manila will use the first filesystem returned by
+   the ``ceph fs volume ls`` command.
 
 #. Setup Manila in the usual way
 
