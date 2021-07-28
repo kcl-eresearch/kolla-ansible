@@ -15,7 +15,7 @@
 
 - name: Get monitor dump
   become: true
-  command: docker exec "{{ manila_services['manila-share']['container_name'] }}" ceph mon dump -c /etc/ceph/ceph.conf --name client.manila -f json
+  command: docker exec "{{ manila_services['manila-share']['container_name'] }}" ceph mon dump -c /etc/ceph/ceph.conf --name {{ ceph_manila_user }} -f json
   register: ceph_monitor_dump
   changed_when: False
   run_once: True
@@ -32,7 +32,7 @@
 
 - name: Get cephfs secret
   become: true
-  command: docker exec "{{ manila_services['manila-share']['container_name'] }}" ceph-authtool -p /etc/ceph/ceph.client.manila.keyring -n client.manila
+  command: docker exec "{{ manila_services['manila-share']['container_name'] }}" ceph-authtool -p /etc/ceph/{{ ceph_manila_keyring }} -n {{ ceph_manila_user }}
   register: manila_keyring
   changed_when: False
   run_once: True
