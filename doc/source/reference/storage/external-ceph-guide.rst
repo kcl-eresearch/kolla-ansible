@@ -207,7 +207,7 @@ for Ceph includes following steps:
 #. Copy Ceph keyring to ``/etc/kolla/config/manila/<ceph_manila_keyring>``
 
 #. If using multiple filesystems (Ceph Pacific+) ``/etc/kolla/globals.yml``:
-    * ``ceph_manila_fs_name`` (default: undefined, default to the first FS available)
+    * ``ceph_manila_fs_name`` (default: undefined, default to the first FS)
 
 #. Setup Manila in the usual way
 
