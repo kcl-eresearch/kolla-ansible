@@ -1,5 +1,4 @@
 # NOTE(yoctozepto): ironic-dnsmasq is used to deliver DHCP(v6) service
-# DNS service is disabled:
 port=0
 
 interface={{ ironic_dnsmasq_interface }}
@@ -15,6 +14,11 @@ dhcp-sequential-ip
 {% if ironic_dnsmasq_default_gateway is not none %}
 dhcp-option=3,{{ ironic_dnsmasq_default_gateway }}
 {% endif %}
+
+# KCL change
+dhcp-option=6,{{ neutron_dnsmasq_dns_servers }}
+# KCL change
+
 dhcp-option=option:tftp-server,{{ api_interface_address }}
 dhcp-option=option:server-ip-address,{{ api_interface_address }}
 dhcp-option=210,/tftpboot/
