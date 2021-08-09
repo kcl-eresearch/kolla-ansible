@@ -1052,7 +1052,7 @@ ceph_nova_user: "nova"
 
 # External Ceph FS name.
 # By default this is undefined to allow Manila to auto-find the first FS available.
-#ceph_manila_fs_name: "manila"
+# ceph_manila_fs_name:
 
 # External Ceph keyrings
 ceph_cinder_keyring: "ceph.client.cinder.keyring"

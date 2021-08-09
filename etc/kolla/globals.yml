@@ -440,7 +440,7 @@
 # Manila
 #ceph_manila_keyring: "ceph.client.manila.keyring"
 #ceph_manila_user: "manila"
-#ceph_manila_fs_name: "manila"
+#ceph_manila_fs_name:
 
 #############################
 # Keystone - Identity Options
