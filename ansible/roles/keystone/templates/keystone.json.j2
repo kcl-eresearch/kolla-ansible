@@ -69,6 +69,22 @@
             "merge": true
         }
         {% endif %}
+        {% if keystone_enable_federation_saml2 | bool %},
+        {
+            "source": "{{ container_config_directory }}/federation/saml2/metadata",
+            "dest": "{{ keystone_container_federation_saml2_metadata_folder }}",
+            "owner": "{{ apache_user }}:{{ apache_user }}",
+            "perm": "0600",
+            "merge": true
+        },
+        {
+            "source": "{{ container_config_directory }}/federation/saml2/cert",
+            "dest": "{{ keystone_container_federation_saml2_certificate_folder }}",
+            "owner": "{{ apache_user }}:{{ apache_user }}",
+            "perm": "0600",
+            "merge": true
+        }
+        {% endif %}
     ],
     "permissions": [
         {
@@ -86,6 +102,17 @@
         },
         {
             "path": "{{ keystone_container_federation_oidc_idp_certificate_folder }}",
+            "owner": "{{ apache_user }}:{{ apache_user }}",
+            "perm": "0700"
+        },{% endif %}
+        {% if keystone_enable_federation_saml2 %}
+        {
+            "path": "{{ keystone_container_federation_saml2_metadata_folder }}",
+            "owner": "{{ apache_user }}:{{ apache_user }}",
+            "perm": "0700"
+        },
+        {
+            "path": "{{ keystone_container_federation_saml2_idp_certificate_folder }}",
             "owner": "{{ apache_user }}:{{ apache_user }}",
             "perm": "0700"
         },{% endif %}

@@ -17,3 +17,4 @@ haproxy_health_check: "check inter 2000 rise 2 fall 5"
 haproxy_health_check_ssl: "check check-ssl inter 2000 rise 2 fall 5"
 
 haproxy_enable_federation_openid: "{{ keystone_identity_providers | selectattr('protocol','equalto','openid') | list | count > 0 }}"
+haproxy_enable_federation_saml2: "{{ keystone_identity_providers | selectattr('protocol','equalto','saml2') | list | count > 0 }}"
