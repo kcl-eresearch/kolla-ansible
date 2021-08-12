@@ -80,10 +80,10 @@ LogLevel info
 {% if keystone_enable_federation_saml2 %}
     <Location /v3>
         MellonEnable "info"
-        MellonSPPrivateKeyFile {{ keystone_container_federation_saml2_certificate_folder }}/keystone.key
-        MellonSPCertFile {{ keystone_container_federation_saml2_certificate_folder }}/keystone.cert
-        MellonSPMetadataFile {{ keystone_container_federation_saml2_metadata_folder }}/sp-metadata.xml
-        MellonIdPMetadataFile {{ keystone_container_federation_saml2_metadata_folder }}/idp-metadata.xml
+        MellonSPPrivateKeyFile {{ keystone_container_federation_saml2_certificate_folder }}/sp.key
+        MellonSPCertFile {{ keystone_container_federation_saml2_certificate_folder }}/sp.cert
+        MellonSPMetadataFile {{ keystone_container_federation_saml2_metadata_folder }}/sp.xml
+        MellonIdPMetadataFile {{ keystone_container_federation_saml2_metadata_folder }}/idp.xml
         MellonEndpointPath /v3/mellon
         MellonIdP "IDP"
     </Location>

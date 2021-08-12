@@ -10,7 +10,7 @@
     - inventory_hostname in groups[keystone.group]
   with_items:
     - "{{ keystone_host_federation_saml2_metadata_folder }}"
-    - "{{ keystone_host_federation_saml2_idp_certificate_folder }}"
+    - "{{ keystone_host_federation_saml2_certificate_folder }}"
 
 - name: Create SAML2 configuration directories
   vars:
@@ -22,17 +22,30 @@
   become: true
   with_items:
     - "{{ keystone_host_federation_saml2_metadata_folder }}"
-    - "{{ keystone_host_federation_saml2_idp_certificate_folder }}"
+    - "{{ keystone_host_federation_saml2_certificate_folder }}"
   when:
     - inventory_hostname in groups[keystone.group]
 
-- name: Copying SAML2 Identity Providers metadata
+- name: Copying SAML2 Identity Providers sp metadata
   vars:
     keystone: "{{ keystone_services['keystone'] }}"
   become: true
   copy:
-    src: "{{ item.metadata_folder }}/"
-    dest: "{{ keystone_host_federation_saml2_metadata_folder }}"
+    src: "{{ item.metadata_sp_file }}"
+    dest: "{{ keystone_host_federation_saml2_metadata_folder }}/sp.xml"
+    mode: "0660"
+  with_items: "{{ keystone_identity_providers }}"
+  when:
+    - item.protocol == 'saml2'
+    - inventory_hostname in groups[keystone.group]
+
+- name: Copying SAML2 Identity Providers idp metadata
+  vars:
+    keystone: "{{ keystone_services['keystone'] }}"
+  become: true
+  copy:
+    src: "{{ item.metadata_idp_file }}"
+    dest: "{{ keystone_host_federation_saml2_metadata_folder }}/idp.xml"
     mode: "0660"
   with_items: "{{ keystone_identity_providers }}"
   when:
@@ -45,7 +58,20 @@
   become: true
   copy:
     src: "{{ item.certificate_file }}"
-    dest: "{{ keystone_host_federation_saml2_idp_certificate_folder }}"
+    dest: "{{ keystone_host_federation_saml2_certificate_folder }}/sp.cert"
+    mode: "0660"
+  with_items: "{{ keystone_identity_providers }}"
+  when:
+    - item.protocol == 'saml2'
+    - inventory_hostname in groups[keystone.group]
+
+- name: Copying SAML2 Identity Providers private keys
+  vars:
+    keystone: "{{ keystone_services['keystone'] }}"
+  become: true
+  copy:
+    src: "{{ item.private_key_file }}"
+    dest: "{{ keystone_host_federation_saml2_certificate_folder }}/sp.key"
     mode: "0660"
   with_items: "{{ keystone_identity_providers }}"
   when:
