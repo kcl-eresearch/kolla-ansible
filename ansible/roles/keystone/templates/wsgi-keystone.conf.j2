@@ -35,6 +35,8 @@ LogLevel info
 
 
 <VirtualHost *:{{ keystone_public_listen_port }}>
+    ServerName {{ keystone_public_url }}
+
     WSGIDaemonProcess keystone-public processes={{ openstack_service_workers }} threads=1 user=keystone group=keystone display-name=keystone-public
     WSGIProcessGroup keystone-public
     WSGIScriptAlias / {{ binary_path }}/keystone-wsgi-public
