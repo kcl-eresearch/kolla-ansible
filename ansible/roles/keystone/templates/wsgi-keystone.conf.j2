@@ -132,7 +132,7 @@ LogLevel info
 {% endfor %}
 </VirtualHost>
 
-<VirtualHost *:{{ keystone_adopenidmin_listen_port }}>
+<VirtualHost *:{{ keystone_admin_listen_port }}>
     WSGIDaemonProcess keystone-admin processes={{ openstack_service_workers }} threads=1 user=keystone group=keystone display-name=keystone-admin
     WSGIProcessGroup keystone-admin
     WSGIScriptAlias / {{ binary_path }}/keystone-wsgi-admin
