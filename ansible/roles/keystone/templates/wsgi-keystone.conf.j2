@@ -88,6 +88,7 @@ LogLevel info
         MellonIdPMetadataFile {{ keystone_container_federation_saml2_metadata_folder }}/idp.xml
         MellonEndpointPath /v3/mellon
         MellonIdP "IDP"
+        MellonSetEnvNoPrefix "REMOTE_USER" "NAME_ID"
     </Location>
 
     {# WebSSO authentication endpoint -#}
