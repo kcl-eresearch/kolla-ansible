@@ -1,0 +1,11 @@
+---
+features:
+  - |
+    Add support for the saml2 authentication protocol in Keystone using
+    mod_mellon for websso.
+upgrade:
+  - |
+    Renamed 'keystone_container_federation_oidc_attribute_mappings_folder'
+    to 'keystone_container_federation_attribute_mappings_folder' and
+    renamed 'keystone_host_federation_oidc_attribute_mappings_folder'
+    to 'keystone_host_federation_attribute_mappings_folder'.

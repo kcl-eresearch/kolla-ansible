@@ -62,9 +62,7 @@ Supported protocols
 ~~~~~~~~~~~~~~~~~~~
 
 OpenStack supports both OpenID Connect and SAML protocols for federated
-identity, but for now, kolla Ansible supports only OpenID Connect.
-Therefore, if you desire to use SAML in your environment, you will need
-to set it up manually or extend Kolla Ansible to also support it.
+identity.
 
 .. _setup-oidc-kolla-ansible:
 
@@ -94,6 +92,43 @@ below:
       - name: "mappingId1"
         file: "/full/qualified/path/to/mapping/json/file/to/mappingId1"
 
+
+Setting up SAML 2 via Kolla Ansible
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can currently only configure one SAML 2 IdP.
+
+First, you will need to run "mellon_create_metadata.sh"
+on a server with mod_mellon installed, using Keystone's endpoint
+(e.g. https://your-public-api:5000/v3/mellon/) as the endpoint-url.
+Register the generated SP metadata with your identity provider.
+
+After registering the SP, you will need to add the identity provider
+to your kolla-ansible globals as the example below:
+
+.. code-block:: yaml
+
+    keystone_identity_providers:
+      - name: "myidp1"
+        openstack_domain: "my-domain"
+        protocol: "saml2"
+        identifier: "https://idp-entityid"
+        public_name: "Authenticate via myidp1"
+        attribute_mapping: "mappingId1"
+        certificate_file: "path/to/certificate/file.pem"
+        metadata_sp_file: "path/to/metadata/sp_metadata.xml"
+        metadata_idp_file: "path/to/metadata/idp_metadata.xml"
+        certificate_file: "path/to/certificate/mellon.cert"
+        private_key_file: "path/to/certificate/mellon.key"
+
+    keystone_identity_mappings:
+      - name: "mappingId1"
+        file: "/full/qualified/path/to/mapping/json/file/to/mappingId1"
+
+For information on creating the mapping, please see
+:keystone-doc:`Configuring Keystone for Federation
+<admin/federation/configure_federation.html#create-a-mapping>`
+
 Identity providers configurations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -110,8 +145,7 @@ The OpenStack domain that the Identity Provider belongs.
 protocol
 ********
 
-The federated protocol used by the IdP; e.g. openid or saml. We support only
-OpenID connect right now.
+The federated protocol used by the IdP; e.g. openid or saml2.
 
 identifier
 **********
@@ -131,11 +165,36 @@ The attribute mapping to be used for the Identity Provider. This mapping is
 expected to already exist in OpenStack or be configured in the
 `keystone_identity_mappings` property.
 
+metadata_sp_file
+****************
+
+For SAML 2 providers, this should be the path to a file containing the
+generated metadata for the mod_mellon service provider, in XML format.
+
+metadata_idp_file
+*****************
+
+For SAML 2 providers, this should be the path to a file containing metadata for
+the identity provider, in XML format.
+
+certificate_file
+****************
+
+For SAML 2 providers, this should be the path to a file containing the
+generated service provider certificate. This certificate will have been
+encoded into the service provider metadata as well.
+
+private_key_file
+****************
+
+For SAML 2 providers, this should be the path to a file containing the
+generated service provider private key.
+
 metadata_folder
 ***************
 
-Path to the folder containing all of the identity provider metadata as JSON
-files.
+For OpenID providers, the path to the folder containing all of the identity
+provider metadata as JSON files.
 
 The metadata folder must have all your Identity Providers configurations,
 the name of the files will be the name (with path) of the Issuer configuration.
@@ -247,8 +306,8 @@ Identity provider's endpoint:
 certificate_file
 ****************
 
-Path to the Identity Provider certificate file, the file must be named as
-'certificate-key-id.pem'. E.g.
+For OpenID providers, path to the Identity Provider certificate file,
+the file must be named as 'certificate-key-id.pem'. E.g.
 
 .. code-block::
 
