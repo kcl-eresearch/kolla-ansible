@@ -381,6 +381,9 @@ mariadb_clustercheck_port: "4569"
 mariadb_monitor_user: "haproxy"
 mariadb_default_database_shard_id: 0
 mariadb_default_database_shard_hosts: "{% set default_shard = [] %}{% for host in groups['mariadb'] %}{% if hostvars[host]['mariadb_shard_id'] is not defined or hostvars[host]['mariadb_shard_id'] == mariadb_default_database_shard_id %}{{ default_shard.append(host) }}{% endif %}{% endfor %}{{ default_shard }}"
+mariadb_shard_id: "{{ mariadb_default_database_shard_id }}"
+mariadb_shard_name: "shard_{{ mariadb_shard_id }}"
+mariadb_shard_group: "mariadb_{{ mariadb_shard_name }}"
 mariadb_loadbalancer: "haproxy"
 
 masakari_api_port: "15868"
@@ -1042,6 +1045,8 @@ enable_heat_horizon_policy_file: "{{ enable_heat }}"
 enable_keystone_horizon_policy_file: "{{ enable_keystone }}"
 enable_neutron_horizon_policy_file: "{{ enable_neutron }}"
 enable_nova_horizon_policy_file: "{{ enable_nova }}"
+
+horizon_enable_tls_backend: "{{ kolla_enable_tls_backend }}"
 
 horizon_internal_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ horizon_tls_port if kolla_enable_tls_internal | bool else horizon_port }}"
 horizon_public_endpoint: "{{ public_protocol }}://{{ kolla_external_fqdn | put_address_in_context('url') }}:{{ horizon_tls_port if kolla_enable_tls_external | bool else horizon_port }}"
