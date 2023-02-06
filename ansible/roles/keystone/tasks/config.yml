@@ -144,9 +144,17 @@
   notify:
     - Restart {{ item.key }} container
 
+- include_tasks: config-federation.yml
+  when:
+    - enable_keystone_federation | bool
+
 - include_tasks: config-federation-oidc.yml
   when:
     - keystone_enable_federation_openid | bool
+
+- include_tasks: config-federation-saml2.yml
+  when:
+    - keystone_enable_federation_saml2 | bool
 
 - name: Copying over wsgi-keystone.conf
   vars:
