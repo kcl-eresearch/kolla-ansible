@@ -65,7 +65,7 @@ prometheus_services:
         auth_user: "{{ prometheus_alertmanager_user }}"
         auth_pass: "{{ prometheus_alertmanager_password }}"
       prometheus_alertmanager_external:
-        enabled: "{{ enable_prometheus_alertmanager | bool }}"
+        enabled: "{{ enable_prometheus_alertmanager_external | bool }}"
         mode: "http"
         external: true
         port: "{{ prometheus_alertmanager_port }}"
@@ -75,9 +75,17 @@ prometheus_services:
     container_name: "prometheus_openstack_exporter"
     group: "prometheus-openstack-exporter"
     enabled: "{{ enable_prometheus_openstack_exporter | bool }}"
+    environment:
+      OS_COMPUTE_API_VERSION: "{{ prometheus_openstack_exporter_compute_api_version }}"
     image: "{{ prometheus_openstack_exporter_image_full }}"
     volumes: "{{ prometheus_openstack_exporter_default_volumes + prometheus_openstack_exporter_extra_volumes }}"
     dimensions: "{{ prometheus_openstack_exporter_dimensions }}"
+    haproxy:
+      prometheus_openstack_exporter:
+        enabled: "{{ enable_prometheus_openstack_exporter | bool }}"
+        mode: "http"
+        external: false
+        port: "{{ prometheus_openstack_exporter_port }}"
   prometheus-elasticsearch-exporter:
     container_name: prometheus_elasticsearch_exporter
     group: prometheus-elasticsearch-exporter
@@ -254,3 +262,5 @@ prometheus_openstack_exporter_disabled_dns: "{{ '--disable-service.dns' if not e
 prometheus_openstack_exporter_disabled_object: "{{ '--disable-service.object-store' if not enable_swift | bool else '' }}"
 prometheus_openstack_exporter_disabled_lb: "{{ '--disable-service.load-balancer --disable-metric=neutron-loadbalancers --disable-metric=neutron-loadbalancers_not_active' if not enable_octavia | bool else '' }}"
 prometheus_openstack_exporter_disabled_items: "{{ [prometheus_openstack_exporter_disabled_volume, prometheus_openstack_exporter_disabled_dns, prometheus_openstack_exporter_disabled_object, prometheus_openstack_exporter_disabled_lb|trim]|join(' ')|trim }}"
+
+prometheus_alertmanager_external_url: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ prometheus_alertmanager_port }}"

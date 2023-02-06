@@ -228,6 +228,8 @@ om_enable_rabbitmq_tls: "{{ rabbitmq_enable_tls | bool }}"
 # CA certificate bundle in containers using oslo.messaging with RabbitMQ TLS.
 om_rabbitmq_cacert: "{{ rabbitmq_cacert }}"
 
+om_enable_rabbitmq_high_availability: false
+
 ####################
 # Networking options
 ####################
@@ -624,6 +626,7 @@ enable_freezer: "no"
 enable_gnocchi: "no"
 enable_gnocchi_statsd: "no"
 enable_grafana: "{{ enable_monasca | bool }}"
+enable_grafana_external: "{{ enable_grafana | bool }}"
 enable_hacluster: "no"
 enable_heat: "{{ enable_openstack_core | bool }}"
 enable_horizon: "{{ enable_openstack_core | bool }}"
@@ -666,6 +669,8 @@ enable_manila_backend_cephfs_nfs: "no"
 enable_manila_backend_glusterfs_nfs: "no"
 enable_mariabackup: "no"
 enable_masakari: "no"
+enable_masakari_instancemonitor: "{{ enable_masakari | bool }}"
+enable_masakari_hostmonitor: "{{ enable_masakari | bool }}"
 enable_mistral: "no"
 enable_monasca: "no"
 enable_multipathd: "no"
@@ -782,11 +787,13 @@ enable_elasticsearch: "{{ 'yes' if enable_central_logging | bool or enable_ospro
 enable_elasticsearch_curator: "no"
 
 enable_kibana: "{{ 'yes' if enable_central_logging | bool or enable_monasca | bool else 'no' }}"
+enable_kibana_external: "{{ enable_kibana | bool }}"
 
 ####################
 # Redis options
 ####################
-redis_connection_string: "redis://{% for host in groups['redis'] %}{% if host == groups['redis'][0] %}admin:{{ redis_master_password }}@{{ 'api' | kolla_address(host) | put_address_in_context('url') }}:{{ redis_sentinel_port }}?sentinel=kolla{% else %}&sentinel_fallback={{ 'api' | kolla_address(host) | put_address_in_context('url') }}:{{ redis_sentinel_port }}{% endif %}{% endfor %}&db=0&socket_timeout=60&retry_on_timeout=yes"
+redis_connection_string: "redis://{% for host in groups['redis'] %}{% if host == groups['redis'][0] %}admin:{{ redis_master_password }}@{{ 'api' | kolla_address(host) | put_address_in_context('url') }}:{{ redis_sentinel_port }}?sentinel=kolla{% else %}&sentinel_fallback={{ 'api' | kolla_address(host) | put_address_in_context('url') }}:{{ redis_sentinel_port }}{% endif %}{% endfor %}{{ redis_connection_string_extras }}"
+redis_connection_string_extras: "&db=0&socket_timeout=60&retry_on_timeout=yes"
 
 ####################
 # Osprofiler options
@@ -1116,6 +1123,7 @@ enable_prometheus_node_exporter: "{{ enable_prometheus | bool }}"
 enable_prometheus_memcached_exporter: "{{ enable_memcached | bool }}"
 enable_prometheus_cadvisor: "{{ enable_prometheus | bool }}"
 enable_prometheus_alertmanager: "{{ enable_prometheus | bool }}"
+enable_prometheus_alertmanager_external: "{{ enable_prometheus_alertmanager | bool }}"
 enable_prometheus_ceph_mgr_exporter: "no"
 enable_prometheus_openstack_exporter: "{{ enable_prometheus | bool }}"
 enable_prometheus_elasticsearch_exporter: "{{ enable_prometheus | bool and enable_elasticsearch | bool }}"
@@ -1124,11 +1132,12 @@ enable_prometheus_rabbitmq_exporter: "{{ enable_prometheus | bool and enable_rab
 
 prometheus_alertmanager_user: "admin"
 prometheus_openstack_exporter_interval: "60s"
-prometheus_openstack_exporter_timeout: "10s"
+prometheus_openstack_exporter_timeout: "45s"
 prometheus_elasticsearch_exporter_interval: "60s"
 prometheus_cmdline_extras:
 prometheus_ceph_mgr_exporter_endpoints: []
 prometheus_openstack_exporter_endpoint_type: "internal"
+prometheus_openstack_exporter_compute_api_version: "2.1"
 
 ############
 # Vitrage

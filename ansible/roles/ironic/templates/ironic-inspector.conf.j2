@@ -2,7 +2,7 @@
 debug = {{ ironic_logging_debug }}
 log_dir = /var/log/kolla/ironic-inspector
 
-{% if not enable_keystone | bool %}
+{% if not ironic_enable_keystone_integration | bool %}
 auth_strategy = noauth
 {% endif %}
 listen_address = {{ api_interface_address }}
@@ -12,10 +12,14 @@ transport_url = {{ rpc_transport_url }}
 [oslo_messaging_notifications]
 transport_url = {{ notify_transport_url }}
 
-{% if om_enable_rabbitmq_tls | bool %}
 [oslo_messaging_rabbit]
+heartbeat_in_pthread = true
+{% if om_enable_rabbitmq_tls | bool %}
 ssl = true
 ssl_ca_file = {{ om_rabbitmq_cacert }}
+{% endif %}
+{% if om_enable_rabbitmq_high_availability | bool %}
+amqp_durable_queues = true
 {% endif %}
 
 [ironic]
@@ -27,7 +31,7 @@ user_domain_id = {{ default_user_domain_id }}
 project_name = service
 username = {{ ironic_inspector_keystone_user }}
 password = {{ ironic_inspector_keystone_password }}
-os_endpoint_type = internalURL
+valid_interfaces = internal
 cafile = {{ openstack_cacert }}
 region_name = {{ openstack_region_name }}
 {% else %}

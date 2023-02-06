@@ -53,7 +53,7 @@ LogLevel info
     SSLEngine on
     SSLCertificateFile /etc/keystone/certs/keystone-cert.pem
     SSLCertificateKeyFile /etc/keystone/certs/keystone-key.pem
-{% endif %}
+{% endif -%}
 
 {% if keystone_enable_federation_openid %}
     OIDCClaimPrefix "OIDC-"
@@ -61,6 +61,9 @@ LogLevel info
     OIDCResponseType "{{ keystone_federation_oidc_response_type }}"
     OIDCScope "{{ keystone_federation_oidc_scopes }}"
     OIDCMetadataDir {{ keystone_container_federation_oidc_metadata_folder }}
+{% if keystone_federation_oidc_jwks_uri | length > 0 %}
+    OIDCOAuthVerifyJwksUri {{ keystone_federation_oidc_jwks_uri }}
+{% endif %}
 {% if keystone_federation_openid_certificate_key_ids | length > 0 %}
     OIDCOAuthVerifyCertFiles {{ keystone_federation_openid_certificate_key_ids | join(" ") }}
 {% endif %}

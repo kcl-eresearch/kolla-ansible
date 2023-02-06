@@ -42,6 +42,7 @@ fluentd_elasticsearch_password: ""
 fluentd_elasticsearch_ssl_version: "TLSv1_2"
 fluentd_elasticsearch_ssl_verify: "true"
 fluentd_elasticsearch_cacert: "{{ openstack_cacert }}"
+fluentd_elasticsearch_request_timeout: "60s"
 
 ####################
 # Docker
@@ -101,7 +102,6 @@ kolla_toolbox_default_volumes:
   - "/dev/:/dev/"
   - "/run/:/run/:shared"
   - "kolla_logs:/var/log/kolla/"
-  - "/run/openvswitch:/run/openvswitch:shared"
 cron_default_volumes:
   - "{{ node_config_directory }}/cron/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"

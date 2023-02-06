@@ -24,8 +24,7 @@
         dashboard_enabled: "{{ openstack_core_enabled or scenario in ['monasca'] }}"
         upper_constraints_file: "{{ ansible_env.HOME }}/src/opendev.org/openstack/requirements/upper-constraints.txt"
         docker_image_tag_suffix: "{{ '-aarch64' if ansible_architecture == 'aarch64' else '' }}"
-        pip_user_path_env:
-          PATH: "{{ ansible_env.HOME + '/.local/bin:' + ansible_env.PATH }}"
+        kolla_ansible_venv_path: "{{ ansible_env.HOME }}/kolla-ansible-venv"
 
     - name: Install dig for Designate testing
       become: true
@@ -53,6 +52,7 @@
       DEFAULT:
         profile: gate
         logs_dir: /tmp/logs/build
+        quiet: true
         # NOTE(yoctozepto): we cannot build and push at the same time on debian
         # buster see https://github.com/docker/for-linux/issues/711.
         push: "{{ base_distro != 'debian' }}"
@@ -65,15 +65,14 @@
         # NOTE(yoctozepto): to avoid issues with IPv6 not enabled in the docker daemon
         # and since we don't need isolated networks here, use host networking
         network_mode: host
-  environment: "{{ pip_user_path_env }}"
   tasks:
     - name: detect whether need build images
       set_fact:
         need_build_image: true
       when:
-        # NOTE(yoctozepto): if there is any tested change that does not belong to kolla-ansible,
-        # then kolla images should be built
-        - item.project.short_name != "kolla-ansible"
+        # NOTE(yoctozepto): build container images if there is any tested
+        # change that impacts them.
+        - item.project.short_name not in ["ansible-collection-kolla", "kayobe", "kolla-ansible", "tenks"]
       with_items: "{{ zuul['items'] }}"
 
     # NOTE(yoctozepto): required to template template_overrides.j2 for Zuul
@@ -150,6 +149,10 @@
         # globals.yml
         - src: "tests/templates/globals-default.j2"
           dest: /etc/kolla/globals.yml
+        # global.conf
+        - src: "tests/templates/global.conf.j2"
+          dest: /etc/kolla/config/global.conf
+          when: "{{ openstack_core_enabled }}"
         # nova-compute.conf
         - src: "tests/templates/nova-compute-overrides.j2"
           dest: /etc/kolla/config/nova/nova-compute.conf
@@ -166,7 +169,9 @@
         - src: "tests/templates/ironic-overrides.j2"
           dest: /etc/kolla/config/ironic.conf
           when: "{{ scenario == 'ironic' }}"
-
+        - src: "tests/templates/tenks-deploy-config.yml.j2"
+          dest: "{{ ansible_env.HOME }}/tenks.yml"
+          when: "{{ scenario == 'ironic' }}"
       when: item.when | default(true)
 
     - block:
@@ -193,12 +198,25 @@
         state: directory
       become: true
 
-    # NOTE(mgoddard): We need a recent pip to install the latest cryptography
-    # library. See https://github.com/pyca/cryptography/issues/5753
-    - name: install pip 19.1.1+
-      command: >-
-        python3 -m pip install --user
-        pip>=19.1.1
+    - name: Create Kolla Ansible venv
+      command:
+        # NOTE(yoctozepto): We use --system-site-packages in Xena and older because the Ansible
+        # version tested in CI for CentOS 8 requires system SELinux bindings to be present despite
+        # the fact that SELinux is in permissive mode.
+        cmd: "python3 -m venv --system-site-packages {{ kolla_ansible_venv_path }}"
+        creates: "{{ kolla_ansible_venv_path }}"
+
+    - name: Ensure the latest tested pip
+      pip:
+        name: "pip==21.*"
+        state: latest
+        virtualenv: "{{ kolla_ansible_venv_path }}"
+
+    - name: Ensure the latest tested setuptools
+      pip:
+        name: "setuptools==59.*"
+        state: latest
+        virtualenv: "{{ kolla_ansible_venv_path }}"
 
     - name: install kolla-ansible and dependencies
       vars:
@@ -207,15 +225,16 @@
         # Test latest ansible version on Ubuntu, minimum supported on others.
         ansible_version_constraint: >-
           {{ ansible_version_min if is_upgrade or base_distro != 'ubuntu' else ansible_version_max }}
-      command: >-
-        python3 -m pip install --user
-        -c {{ upper_constraints_file }}
-        {{ kolla_ansible_src_dir }}
-        ansible{{ ansible_version_constraint }}
-        ara<1.0.0
+      pip:
+        extra_args: "-c {{ upper_constraints_file }}"
+        name:
+          - "{{ kolla_ansible_src_dir }}"
+          - "ansible{{ ansible_version_constraint }}"
+          - "ara<1.0.0"
+        virtualenv: "{{ kolla_ansible_venv_path }}"
 
     - name: get ARA callback plugin path
-      command: "python3 -m ara.setup.callback_plugins"
+      command: "{{ kolla_ansible_venv_path }}/bin/python3 -m ara.setup.callback_plugins"
       changed_when: false
       register: ara_callback_plugins
 
@@ -232,7 +251,7 @@
         remote_src: true
 
     - name: generate passwords
-      command: kolla-genpwd
+      command: "{{ kolla_ansible_venv_path }}/bin/kolla-genpwd"
 
     - name: slurp kolla passwords
       slurp:
@@ -257,20 +276,24 @@
 
     - name: Record the running state of the environment as seen by the setup module
       shell:
-        cmd: ansible all -i {{ kolla_inventory_path }} -e ansible_user={{ ansible_user }} -m setup > /tmp/logs/ansible/initial-setup
+        cmd: "{{ kolla_ansible_venv_path }}/bin/ansible all -i {{ kolla_inventory_path }} -e ansible_user={{ ansible_user }} -m setup > /tmp/logs/ansible/initial-setup"
 
     - name: Set facts for actions
       set_fact:
         # NOTE(yoctozepto): no support for upgrades for now
         docker_image_tag: "{{ build_image_tag if need_build_image else (zuul.branch | basename) ~ docker_image_tag_suffix }}"
-        docker_image_prefix: "{{ 'primary:4000/lokolla/' if need_build_image else 'kolla/' }}"
+        docker_image_prefix: "{{ 'primary:4000/lokolla/' if need_build_image else '{{ zuul_site_mirror_fqdn }}:4447/openstack.kolla/' }}"
 
     # NOTE(yoctozepto): k-a octavia-certificates should run before k-a bootstrap-servers
     # because the latter hijacks /etc/kolla permissions (due to same directory on the
     # same host being used by both)
     - name: create TLS certificates for octavia
-      command: kolla-ansible octavia-certificates
+      shell: |
+        source {{ kolla_ansible_venv_path }}/bin/activate
+        kolla-ansible octavia-certificates
       when: scenario in ['octavia', 'ovn']
+      args:
+        executable: /bin/bash
 
     # NOTE(mgoddard): We are using the script module here and later to ensure
     # we use the local copy of these scripts, rather than the one on the remote
@@ -287,6 +310,7 @@
         KOLLA_SRC_DIR: "{{ ansible_env.HOME }}/src/opendev.org/openstack/kolla"
         SCENARIO: "{{ scenario }}"
         UPPER_CONSTRAINTS: "{{ upper_constraints_file }}"
+        KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
 
     - name: Run init-swift.sh script
       script:
@@ -324,7 +348,7 @@
         - name: copy ceph.conf to enabled services
           copy:
             remote_src: True
-            src: "/etc/ceph/ceph.conf"
+            src: "/etc/ceph/ceph.conf.fixed"
             dest: "/etc/kolla/config/{{ item.name }}/ceph.conf"
           with_items: "{{ cephadm_kolla_ceph_services }}"
 
@@ -353,6 +377,8 @@
             chdir: "{{ kolla_ansible_src_dir }}"
           environment:
             TLS_ENABLED: "{{ tls_enabled }}"
+            KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
+
         # NOTE(yoctozepto): this is nice as the first step after the deployment
         # because it waits for the services to stabilize well enough so that
         # the dashboard is able to show the login prompt
@@ -411,13 +437,26 @@
             chdir: "{{ kolla_ansible_src_dir }}"
           when: scenario == "scenario_nfv"
 
-        - name: Run test-ironic.sh script
-          script:
-            cmd: test-ironic.sh
-            executable: /bin/bash
-            chdir: "{{ kolla_ansible_src_dir }}"
-          environment:
-            TLS_ENABLED: "{{ tls_enabled }}"
+        - block:
+            - name: Run deploy-tenks.sh script
+              script:
+                cmd: deploy-tenks.sh
+                executable: /bin/bash
+                chdir: "{{ kolla_ansible_src_dir }}"
+              environment:
+                # NOTE(yoctozepto): This is kolla-ansible-tenks-venv to avoid
+                # a conflict with the venv that Tenks creates by itself
+                # by default to ~/tenks-venv
+                TENKS_VENV_PATH: "{{ ansible_env.HOME }}/kolla-ansible-tenks-venv"
+                TENKS_SRC_PATH: "{{ ansible_env.HOME }}/src/opendev.org/openstack/tenks"
+
+            - name: Run test-ironic.sh script
+              script:
+                cmd: test-ironic.sh
+                executable: /bin/bash
+                chdir: "{{ kolla_ansible_src_dir }}"
+              environment:
+                TLS_ENABLED: "{{ tls_enabled }}"
           when: scenario == "ironic"
 
         - name: Run test-magnum.sh script
@@ -426,6 +465,8 @@
             executable: /bin/bash
             chdir: "{{ kolla_ansible_src_dir }}"
           when: scenario == "magnum"
+          environment:
+            KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
 
         - name: Run test-octavia.sh script
           script:
@@ -461,6 +502,8 @@
             executable: /bin/bash
             chdir: "{{ kolla_ansible_src_dir }}"
           when: scenario == "mariadb"
+          environment:
+            KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
 
         - name: Run test-prometheus-efk.sh script
           script:
@@ -500,7 +543,6 @@
 
 - hosts: primary
   any_errors_fatal: true
-  environment: "{{ pip_user_path_env }}"
   tasks:
     # Upgrade: update config.
     - block:
@@ -541,10 +583,11 @@
           when: item.when | default(true)
 
         - name: upgrade kolla-ansible
-          command: >-
-            python3 -m pip install --user
-            -c {{ upper_constraints_file }}
-            {{ kolla_ansible_src_dir }}
+          pip:
+            extra_args: "-c {{ upper_constraints_file }}"
+            name:
+              - "{{ kolla_ansible_src_dir }}"
+            virtualenv: "{{ kolla_ansible_venv_path }}"
 
         # Update passwords.yml to include any new passwords added in this
         # release.
@@ -558,11 +601,11 @@
             remote_src: true
 
         - name: generate new passwords
-          command: kolla-genpwd
+          command: "{{ kolla_ansible_venv_path }}/bin/kolla-genpwd"
 
         - name: merge old and new passwords
           command: >-
-            kolla-mergepwd
+            {{ kolla_ansible_venv_path }}/bin/kolla-mergepwd
             --old /etc/kolla/passwords.yml.old
             --new /etc/kolla/passwords.yml
             --final /etc/kolla/passwords.yml
@@ -573,6 +616,8 @@
             cmd: tests/upgrade.sh
             executable: /bin/bash
             chdir: "{{ kolla_ansible_src_dir }}"
+          environment:
+            KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
 
         # NOTE(yoctozepto): this is nice as the first step after the upgrade
         # because it waits for the services to stabilize well enough so that
@@ -605,6 +650,8 @@
             cmd: tests/deploy-bifrost.sh
             executable: /bin/bash
             chdir: "{{ kolla_ansible_src_dir }}"
+          environment:
+            KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
 
         - name: Run test-bifrost.sh script
           shell:
@@ -617,6 +664,8 @@
             cmd: tests/upgrade-bifrost.sh
             executable: /bin/bash
             chdir: "{{ kolla_ansible_src_dir }}"
+          environment:
+            KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
       when: scenario == "bifrost"
 
 # NOTE(yoctozepto): each host checks itself
@@ -645,13 +694,14 @@
 
 - hosts: primary
   any_errors_fatal: true
-  environment: "{{ pip_user_path_env }}"
   tasks:
     - name: Run reconfigure.sh script
       script:
         cmd: reconfigure.sh
         executable: /bin/bash
         chdir: "{{ kolla_ansible_src_dir }}"
+      environment:
+        KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
       when:
         - not is_upgrade
         - scenario != "bifrost"
