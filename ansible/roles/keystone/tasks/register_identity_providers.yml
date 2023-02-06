@@ -70,7 +70,7 @@
     --os-region-name={{ openstack_region_name }}
     {% if openstack_cacert != '' %}--os-cacert={{ openstack_cacert }} {% endif %}
     mapping create
-    --rules "{{ keystone_container_federation_oidc_attribute_mappings_folder }}/{{ item.file | basename }}"
+    --rules "{{ keystone_container_federation_attribute_mappings_folder }}/{{ item.file | basename }}"
     {{ item.name }}
   run_once: True
   when:
@@ -91,7 +91,7 @@
     --os-region-name={{ openstack_region_name }}
     {% if openstack_cacert != '' %}--os-cacert={{ openstack_cacert }} {% endif %}
     mapping set
-    --rules="{{ keystone_container_federation_oidc_attribute_mappings_folder }}/{{ item.file | basename }}"
+    --rules="{{ keystone_container_federation_attribute_mappings_folder }}/{{ item.file | basename }}"
     {{ item.name }}
   run_once: True
   when:

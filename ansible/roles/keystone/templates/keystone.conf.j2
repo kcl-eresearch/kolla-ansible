@@ -96,6 +96,9 @@ sso_callback_template = /etc/keystone/sso_callback_template.html
 [openid]
 remote_id_attribute = {{ keystone_remote_id_attribute_oidc }}
 
+[saml2]
+remote_id_attribute = MELLON_IDP
+
 [auth]
-methods = password,token,openid,application_credential
+methods = password,token,openid,saml2,application_credential
 {% endif %}
