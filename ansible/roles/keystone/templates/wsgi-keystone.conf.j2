@@ -35,11 +35,8 @@ LogLevel info
 
 
 <VirtualHost *:{{ keystone_public_listen_port }}>
-{# NOTE(darmach): with external tls enabled OIDC redirection fails, as TLS terminated on haproxy keystone is not aware that redirection should use https. -#}
-{# With missing ServerName Keystone Apache uses fqdn, with http. Adding ServerName pointing to keystone_public_url corrects this. -#}
-{% if kolla_enable_tls_external | bool %}
     ServerName {{ keystone_public_url }}
-{% endif %}
+
     WSGIDaemonProcess keystone-public processes={{ openstack_service_workers }} threads=1 user=keystone group=keystone display-name=keystone-public
     WSGIProcessGroup keystone-public
     WSGIScriptAlias / {{ binary_path }}/keystone-wsgi-public
@@ -83,6 +80,28 @@ LogLevel info
       Require valid-user
       AuthType openid-connect
     </Location>
+{% endif %}
+
+{% if keystone_enable_federation_saml2 %}
+    <Location /v3>
+        MellonEnable "info"
+        MellonSPPrivateKeyFile {{ keystone_container_federation_saml2_certificate_folder }}/sp.key
+        MellonSPCertFile {{ keystone_container_federation_saml2_certificate_folder }}/sp.cert
+        MellonSPMetadataFile {{ keystone_container_federation_saml2_metadata_folder }}/sp.xml
+        MellonIdPMetadataFile {{ keystone_container_federation_saml2_metadata_folder }}/idp.xml
+        MellonEndpointPath /v3/mellon
+        MellonIdP "IDP"
+        MellonSetEnvNoPrefix "REMOTE_USER" "NAME_ID"
+    </Location>
+
+    {# WebSSO authentication endpoint -#}
+    <Location /v3/auth/OS-FEDERATION/websso/saml2>
+      Require valid-user
+      AuthType Mellon
+      MellonEnable auth
+    </Location>
+{% endif %}
+
 
 {% for idp in keystone_identity_providers %}
 {% if idp.protocol == 'openid' %}
@@ -90,6 +109,13 @@ LogLevel info
       OIDCDiscoverURL {{ keystone_public_url }}/redirect_uri?iss={{ idp.identifier | urlencode }}
       Require valid-user
       AuthType openid-connect
+    </LocationMatch>
+{% endif %}
+{% if idp.protocol == 'saml2' %}
+    <LocationMatch /v3/auth/OS-FEDERATION/identity_providers/{{ idp.name }}/protocols/{{ idp.protocol }}/websso>
+      Require valid-user
+      AuthType Mellon
+      MellonEnable auth
     </LocationMatch>
 {% endif %}
 {% endfor %}
@@ -102,6 +128,13 @@ LogLevel info
       {# Note(jasonanderson): `auth-openidc` is a special auth type that can -#}
       {# additionally handle verifying bearer tokens -#}
       AuthType auth-openidc
+    </LocationMatch>
+{% endif %}
+{% if idp.protocol == 'saml2' %}
+    <LocationMatch /v3/OS-FEDERATION/identity_providers/{{ idp.name }}/protocols/{{ idp.protocol }}/auth>
+      Require valid-user
+      AuthType Mellon
+      MellonEnable auth
     </LocationMatch>
 {% endif %}
 {% endfor %}
