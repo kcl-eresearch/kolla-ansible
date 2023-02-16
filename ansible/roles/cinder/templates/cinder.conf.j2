@@ -72,10 +72,14 @@ topics = {{ cinder_enabled_notification_topics | map(attribute='name') | join(',
 driver = noop
 {% endif %}
 
-{% if om_enable_rabbitmq_tls | bool %}
 [oslo_messaging_rabbit]
+heartbeat_in_pthread = {{ service_name == 'cinder-api' }}
+{% if om_enable_rabbitmq_tls | bool %}
 ssl = true
 ssl_ca_file = {{ om_rabbitmq_cacert }}
+{% endif %}
+{% if om_enable_rabbitmq_high_availability | bool %}
+amqp_durable_queues = true
 {% endif %}
 
 [oslo_middleware]
@@ -147,7 +151,6 @@ rados_connect_timeout = 5
 rbd_user = {{ ceph_cinder_user }}
 rbd_secret_uuid = {{ cinder_rbd_secret_uuid }}
 report_discard_supported = True
-image_upload_use_cinder_backend = True
 {% endif %}
 
 {% if enable_cinder_backend_nfs | bool %}

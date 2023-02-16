@@ -21,6 +21,10 @@ pin_release_version = {{ pin_release_version }}
 
 my_ip = {{ api_interface_address }}
 
+{% if ironic_enabled_notification_topics %}
+notification_level = info
+{% endif %}
+
 [oslo_messaging_notifications]
 transport_url = {{ notify_transport_url }}
 {% if ironic_enabled_notification_topics %}
@@ -30,10 +34,14 @@ topics = {{ ironic_enabled_notification_topics | map(attribute='name') | join(',
 driver = noop
 {% endif %}
 
-{% if om_enable_rabbitmq_tls | bool %}
 [oslo_messaging_rabbit]
+heartbeat_in_pthread = {{ service_name == 'ironic-api' }}
+{% if om_enable_rabbitmq_tls | bool %}
 ssl = true
 ssl_ca_file = {{ om_rabbitmq_cacert }}
+{% endif %}
+{% if om_enable_rabbitmq_high_availability | bool %}
+amqp_durable_queues = true
 {% endif %}
 
 {% if ironic_policy_file is defined %}

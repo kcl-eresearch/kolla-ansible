@@ -1,5 +1,6 @@
 ---
 - project:
+    queue: kolla
     templates:
       - check-requirements
       - openstack-cover-jobs
@@ -31,6 +32,7 @@
         - kolla-ansible-ubuntu-source-masakari
         - kolla-ansible-centos8s-source-ironic
         - kolla-ansible-centos8s-binary-ironic
+        - kolla-ansible-debian-source-ironic
         - kolla-ansible-ubuntu-source-ironic
         - kolla-ansible-centos8s-source-upgrade
         - kolla-ansible-debian-source-upgrade
@@ -56,7 +58,6 @@
         - kolla-ansible-debian-source-aarch64
         - kolla-ansible-debian-source-upgrade-aarch64
     gate:
-      queue: kolla
       jobs:
         - kolla-ansible-centos8s-source
         - kolla-ansible-centos8s-source-upgrade
