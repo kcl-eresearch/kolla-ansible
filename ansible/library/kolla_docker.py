@@ -292,6 +292,8 @@ class DockerWorker(object):
 
         self._cgroupns_mode_supported = (
             StrictVersion(self.dc._version) >= StrictVersion('1.41'))
+        self._dimensions_kernel_memory_removed = (
+            StrictVersion(self.dc._version) >= StrictVersion('1.42'))
 
     def generate_tls(self):
         tls = {'verify': self.params.get('tls_verify')}
@@ -549,8 +551,11 @@ class DockerWorker(object):
             'memswap_limit': 'MemorySwap', 'cpu_period': 'CpuPeriod',
             'cpu_quota': 'CpuQuota', 'cpu_shares': 'CpuShares',
             'cpuset_cpus': 'CpusetCpus', 'cpuset_mems': 'CpusetMems',
-            'kernel_memory': 'KernelMemory', 'blkio_weight': 'BlkioWeight',
-            'ulimits': 'Ulimits'}
+            'blkio_weight': 'BlkioWeight', 'ulimits': 'Ulimits'}
+
+        if not self._dimensions_kernel_memory_removed:
+            dimension_map['kernel_memory'] = 'KernelMemory'
+
         unsupported = set(new_dimensions.keys()) - \
             set(dimension_map.keys())
         if unsupported:
@@ -1137,7 +1142,7 @@ def generate_module():
                              'start_container',
                              'stop_container',
                              'stop_and_remove_container']),
-        api_version=dict(required=False, type='str', default='auto'),
+        api_version=dict(required=False, type='str'),
         auth_email=dict(required=False, type='str'),
         auth_password=dict(required=False, type='str', no_log=True),
         auth_registry=dict(required=False, type='str'),
@@ -1159,14 +1164,14 @@ def generate_module():
         cgroupns_mode=dict(required=False, type='str',
                            choices=['private', 'host']),
         privileged=dict(required=False, type='bool', default=False),
-        graceful_timeout=dict(required=False, type='int', default=10),
+        graceful_timeout=dict(required=False, type='int'),
         remove_on_exit=dict(required=False, type='bool', default=True),
         restart_policy=dict(required=False, type='str', choices=[
                             'no',
                             'on-failure',
                             'always',
                             'unless-stopped']),
-        restart_retries=dict(required=False, type='int', default=10),
+        restart_retries=dict(required=False, type='int'),
         state=dict(required=False, type='str', default='running',
                    choices=['running',
                             'exited',
@@ -1180,7 +1185,7 @@ def generate_module():
         volumes_from=dict(required=False, type='list'),
         dimensions=dict(required=False, type='dict', default=dict()),
         tty=dict(required=False, type='bool', default=False),
-        client_timeout=dict(required=False, type='int', default=120),
+        client_timeout=dict(required=False, type='int'),
         ignore_missing=dict(required=False, type='bool', default=False),
     )
     required_if = [
@@ -1206,17 +1211,42 @@ def generate_module():
         bypass_checks=False
     )
 
-    new_args = module.params.pop('common_options', dict())
+    common_options_defaults = {
+        'auth_email': None,
+        'auth_password': None,
+        'auth_registry': None,
+        'auth_username': None,
+        'environment': None,
+        'restart_policy': None,
+        'restart_retries': 10,
+        'api_version': 'auto',
+        'graceful_timeout': 10,
+        'client_timeout': 120,
+    }
 
-    # NOTE(jeffrey4l): merge the environment
-    env = module.params.pop('environment', dict())
-    if env:
-        new_args['environment'].update(env)
+    new_args = module.params.pop('common_options', dict()) or dict()
+    env_module_environment = module.params.pop('environment', dict()) or dict()
 
-    for key, value in module.params.items():
-        if key in new_args and value is None:
-            continue
-        new_args[key] = value
+    for k, v in module.params.items():
+        if v is None:
+            if k in common_options_defaults:
+                if k in new_args:
+                    # From ansible groups vars the common options
+                    # can be string or int
+                    if isinstance(new_args[k], str) and new_args[k].isdigit():
+                        new_args[k] = int(new_args[k])
+                    continue
+                else:
+                    if common_options_defaults[k] is not None:
+                        new_args[k] = common_options_defaults[k]
+            else:
+                continue
+        if v is not None:
+            new_args[k] = v
+
+    env_module_common_options = new_args.pop('environment', dict()) or dict()
+    new_args['environment'] = env_module_common_options
+    new_args['environment'].update(env_module_environment)
 
     # if pid_mode = ""/None/False, remove it
     if not new_args.get('pid_mode', False):
