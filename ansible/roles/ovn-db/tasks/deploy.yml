@@ -1,0 +1,12 @@
+---
+- import_tasks: config.yml
+
+- import_tasks: check-containers.yml
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- import_tasks: bootstrap-db.yml
+  when:
+    - inventory_hostname in groups['ovn-nb-db']
+    - inventory_hostname in groups['ovn-sb-db']
