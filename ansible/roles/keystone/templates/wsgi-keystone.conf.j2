@@ -80,6 +80,7 @@ LogLevel info
       Require valid-user
       AuthType openid-connect
     </Location>
+{% endif %}
 
 {% if keystone_enable_federation_saml2 %}
     <Location /v3>
@@ -100,7 +101,6 @@ LogLevel info
       MellonEnable auth
     </Location>
 {% endif %}
-
 
 {% for idp in keystone_identity_providers %}
 {% if idp.protocol == 'openid' %}
@@ -137,7 +137,6 @@ LogLevel info
     </LocationMatch>
 {% endif %}
 {% endfor %}
-{% endif %}
 </VirtualHost>
 
 <VirtualHost *:{{ keystone_admin_listen_port }}>
