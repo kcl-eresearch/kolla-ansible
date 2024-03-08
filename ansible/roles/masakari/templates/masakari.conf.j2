@@ -22,6 +22,7 @@ max_pool_size = {{ database_max_pool_size }}
 max_retries = -1
 
 [keystone_authtoken]
+service_type = instance-ha
 www_authenticate_uri = {{ keystone_internal_url }}/v3
 auth_url = {{ keystone_admin_url }}
 auth_type = password
@@ -65,4 +66,16 @@ enable_proxy_headers_parsing = True
 {% if masakari_policy_file is defined %}
 [oslo_policy]
 policy_file = {{ masakari_policy_file }}
+{% endif %}
+
+[taskflow]
+connection = mysql+pymysql://{{ masakari_database_user }}:{{ masakari_database_password }}@{{ masakari_database_address }}/{{ masakari_database_name }}
+
+{% if service_name == 'masakari-api' %}
+[coordination]
+{% if masakari_coordination_backend == 'redis' %}
+backend_url = {{ redis_connection_string }}
+{% elif masakari_coordination_backend == 'etcd' %}
+backend_url = etcd3+{{ internal_protocol }}://{{ kolla_internal_fqdn }}:{{ etcd_client_port }}{% if openstack_cacert %}?ca_cert={{ openstack_cacert }}{% endif %}
+{% endif %}
 {% endif %}

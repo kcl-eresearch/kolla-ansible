@@ -1,0 +1,258 @@
+---
+- import_playbook: gather-facts.yml
+
+- name: Prechecks
+  gather_facts: false
+  hosts: localhost
+  serial: '{{ kolla_serial|default("0") }}'
+  tasks:
+    - assert:
+        that: enable_opensearch | bool
+        fail_msg: "OpenSearch is not enabled"
+    - assert:
+        that: not (enable_monasca | bool)
+        fail_msg: "Monasca is enabled, it's not supported by OpenSearch"
+    - assert:
+        that: not (enable_skydive | bool)
+        fail_msg: "Skydive is enabled, it's not supported by OpenSearch"
+    - assert:
+        that: not (enable_elasticsearch | bool)
+        fail_msg: "ElasticSearch is enabled, please disable it"
+
+- name: Pre-migration check for Elasticsearch Index Versions
+  gather_facts: false
+  hosts: elasticsearch[0]
+  tasks:
+    - name: Retrieve settings for all indices
+      become: true
+      kolla_toolbox:
+        module_name: uri
+        module_args:
+          url: "{{ elasticsearch_internal_endpoint }}/_all/_settings"
+          method: GET
+          return_content: yes
+      register: all_index_settings
+
+    - name: Identify indices created with Elasticsearch version < 7
+      set_fact:
+        indices_requiring_reindex: "{{ indices_requiring_reindex | default([]) + [item.key] }}"
+      loop: "{{ all_index_settings.json | dict2items }}"
+      when:
+        - item.value.settings.index.version.created is defined
+        - item.value.settings.index.version.created | string | int < 7000000
+
+    - name: Act on identified indices created with Elasticsearch version < 7
+      block:
+        - name: Retrieve aliases
+          become: true
+          kolla_toolbox:
+            module_name: uri
+            module_args:
+              url: "{{ elasticsearch_internal_endpoint }}/_alias"
+              method: GET
+              return_content: yes
+          register: all_aliases
+
+        - name: Identify no longer used Kibana indices
+          set_fact:
+            old_kibana_indices: "{{ old_kibana_indices | default([]) + [item] }}"
+          loop: "{{ indices_requiring_reindex }}"
+          when:
+            - item is match('.kibana_*')
+            - all_aliases.json[item].aliases['.kibana'] is not defined
+
+        - name: Display Kibana indice prune message if necessary
+          fail:
+            msg: |
+              The following indices created with Elasticsearch version 6.x or earlier are no longer active Kibana indices
+              and have to be removed or reindexed in Elasticsearch if you want to keep them. You can do that either manually
+              or by running this command again with --prune-kibana-indices parameter:
+              {{ old_kibana_indices | join(', ') }}
+          when:
+            - ( old_kibana_indices | default([]) | length ) > 0
+            - not ( prune_kibana_indices | default(false) | bool )
+
+        - name: Prune unused and outdated Kibana indices
+          become: true
+          kolla_toolbox:
+            module_name: uri
+            module_args:
+              url: "{{ elasticsearch_internal_endpoint }}/{{ item }}"
+              method: DELETE
+              return_content: yes
+          register: pruned_indices
+          loop: "{{ old_kibana_indices }}"
+          when:
+            - ( old_kibana_indices | default([]) | length ) > 0
+            - ( prune_kibana_indices | default(false) | bool )
+
+        - name: Display reindexing message if necessary
+          fail:
+            msg: |
+              The following indices were created with Elasticsearch version 6.x or earlier and need to be reindexed:
+              {{ indices_requiring_reindex | difference(old_kibana_indices| default([]) ) | join(', ') }}
+              Please reindex them in the current version of Elasticsearch before attempting migration.
+          when:
+            - ( indices_requiring_reindex | difference(old_kibana_indices | default([])) | length ) > 0
+      when: indices_requiring_reindex is defined
+
+- name: Stop and remove Elasticsearch services containers
+  gather_facts: false
+  hosts: elasticsearch
+  serial: '{{ kolla_serial|default("0") }}'
+  tasks:
+    - name: Stop and remove ElasticSearch
+      become: true
+      kolla_docker:
+        action: "stop_and_remove_container"
+        name: "elasticsearch"
+      when:
+        - inventory_hostname in groups['elasticsearch']
+
+    - name: Stop and remove ElasticSearch Curator
+      become: true
+      kolla_docker:
+        action: "stop_and_remove_container"
+        name: "elasticsearch_curator"
+      when:
+        - inventory_hostname in groups['elasticsearch-curator']
+
+    - name: Stop and remove Kibana
+      become: true
+      kolla_docker:
+        action: "stop_and_remove_container"
+        name: "kibana"
+      when:
+        - inventory_hostname in groups['kibana']
+
+- name: Remove Elasticsearch services loadbalancer config
+  gather_facts: false
+  hosts: loadbalancer
+  serial: '{{ kolla_serial|default("0") }}'
+  tasks:
+    - name: Delete ElasticSearch load-balancer config
+      file:
+        path: "{{ node_config_directory }}/haproxy/services.d/elasticsearch.cfg"
+        state: "absent"
+      become: true
+      when:
+        - inventory_hostname in groups['loadbalancer']
+
+    - name: Delete Kibana load-balancer config
+      file:
+        path: "{{ node_config_directory }}/haproxy/services.d/kibana.cfg"
+        state: "absent"
+      become: true
+      when:
+        - inventory_hostname in groups['loadbalancer']
+
+- name: Migrate Elasticsearch data
+  gather_facts: false
+  hosts: opensearch
+  tasks:
+    - name: Check if elasticsearch_datadir_volume is a directory
+      become: true
+      stat:
+        path: "{{ elasticsearch_datadir_volume }}"
+      register: elasticsearch_datadir_stat
+      ignore_errors: true
+
+    - name: Check if opensearch_datadir_volume is a directory
+      become: true
+      stat:
+        path: "{{ opensearch_datadir_volume }}"
+      register: opensearch_datadir_stat
+      ignore_errors: true
+
+    - name: Create OpenSearch Docker volume if opensearch_datadir_volume is not a directory
+      become: true
+      docker_volume:
+        name: "{{ opensearch_datadir_volume }}"
+      when: opensearch_datadir_stat.stat.isdir is undefined or not opensearch_datadir_stat.stat.isdir
+
+    - name: Get Elasticsearch data directory mount point
+      become: true
+      docker_volume_info:
+        name: "{{ elasticsearch_datadir_volume }}"
+      register: elasticsearch_volume_info
+      ignore_errors: true
+
+    - name: Get file count in Elasticsearch data directory
+      become: true
+      find:
+        paths: "{{ elasticsearch_volume_info.volume.Mountpoint if elasticsearch_volume_info.volume.Mountpoint is defined else elasticsearch_datadir_volume }}"
+        file_type: file
+        recurse: yes
+      register: elasticsearch_volume_found_files
+
+    - name: Get OpenSearch data directory mount point
+      become: true
+      docker_volume_info:
+        name: "{{ opensearch_datadir_volume }}"
+      register: opensearch_volume_info
+      ignore_errors: true
+
+    - name: Set conditions for moving data
+      set_fact:
+        using_regular_folder: >-
+          {{ (elasticsearch_volume_info.volume.Mountpoint is undefined) and
+          (elasticsearch_datadir_stat.stat.isdir | default(false)) and
+          (elasticsearch_volume_found_files.files | default([]) | length > 0) and
+          (opensearch_volume_info.volume.Mountpoint is undefined) }}
+        using_docker_volume: >-
+          {{ (elasticsearch_volume_info.volume.Mountpoint is defined) and
+          (elasticsearch_volume_info.volume.Mountpoint | default('') != '') and
+          not (elasticsearch_volume_info.volume.Mountpoint | default('') == '/') and
+          (elasticsearch_datadir_stat.stat.exists == false) and
+          (opensearch_volume_info.volume.Mountpoint is defined) and
+          (elasticsearch_volume_found_files.files | length > 0) }}
+      become: true
+
+    - name: Move Elasticsearch data to OpenSearch (using regular folder)
+      become: true
+      shell: mv {{ elasticsearch_datadir_volume }}/* {{ opensearch_datadir_volume }}/
+      when: using_regular_folder
+
+    - name: Move Elasticsearch data to OpenSearch (using Docker volume)
+      become: true
+      shell: mv {{ elasticsearch_volume_info.volume.Mountpoint }}/* {{ opensearch_volume_info.volume.Mountpoint }}/
+      when: using_docker_volume
+
+- name: Deploy OpenSearch and OpenSearch Dashboards
+  gather_facts: false
+  hosts:
+    - opensearch
+  serial: '{{ kolla_serial|default("0") }}'
+  roles:
+    - opensearch
+
+- name: Run loadbalancer role
+  gather_facts: false
+  hosts:
+    - loadbalancer
+  roles:
+    - { role: loadbalancer }
+  tasks:
+    - include_role:
+        name: opensearch
+        tasks_from: loadbalancer
+
+- name: Run common role to reconfigure fluentd log shipping
+  gather_facts: false
+  hosts:
+    - cron
+    - fluentd
+    - kolla-logs
+    - kolla-toolbox
+  serial: '{{ kolla_serial|default("0") }}'
+  tags:
+    - common
+  roles:
+    - role: common
+
+- name: Run grafana role to register OpenSearch datasource
+  gather_facts: false
+  hosts: grafana
+  serial: '{{ kolla_serial|default("0") }}'
+  roles:
+    - { role: grafana, when: enable_grafana | bool }
