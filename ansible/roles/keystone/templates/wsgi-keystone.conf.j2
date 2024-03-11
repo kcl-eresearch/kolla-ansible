@@ -39,6 +39,9 @@ LogLevel info
 
 
 <VirtualHost *:{{ keystone_public_listen_port }}>
+{# NOTE(darmach): with external tls enabled OIDC redirection fails, as TLS terminated on haproxy keystone is not aware that redirection should use https. -#}
+{# With missing ServerName Keystone Apache uses fqdn, with http. Adding ServerName pointing to keystone_public_url corrects this. -#}
+{% if kolla_enable_tls_external | bool %}
     ServerName {{ keystone_public_url }}
 {% endif %}
     WSGIDaemonProcess keystone-public processes={{ keystone_api_workers }} threads=1 user=keystone group=keystone display-name=keystone-public
