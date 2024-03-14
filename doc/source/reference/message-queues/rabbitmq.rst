@@ -118,3 +118,39 @@ availability. These are durable queues and classic queue mirroring. Setting the
 flag ``om_enable_rabbitmq_high_availability`` to ``true`` will enable both of
 these features. There are some queue types which are intentionally not mirrored
 using the exclusionary pattern ``^(?!(amq\\.)|(.*_fanout_)|(reply_)).*``.
+
+After enabling this value on a running system, there are some additional steps
+needed to migrate from transient to durable queues.
+
+1. Stop all OpenStack services which use RabbitMQ, so that they will not
+   attempt to recreate any queues yet.
+
+   .. code-block:: console
+
+      kolla-ansible stop --tags <service-tags>
+
+2. Generate the new config for all services.
+
+   .. code-block:: console
+
+      kolla-ansible genconfig
+
+3. Reconfigure RabbitMQ.
+
+   .. code-block:: console
+
+      kolla-ansible reconfigure --tags rabbitmq
+
+4. Reset the state on each RabbitMQ, to remove the old transient queues and
+   exchanges.
+
+   .. code-block:: console
+
+      kolla-ansible rabbitmq-reset-state
+
+5. Start the OpenStack services again, at which point they will recreate the
+   appropriate queues as durable.
+
+   .. code-block:: console
+
+      kolla-ansible deploy --tags <service-tags>

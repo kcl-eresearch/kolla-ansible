@@ -64,7 +64,7 @@ kolla_dev_repos_directory: "/opt/stack/"
 kolla_dev_repos_git: "https://opendev.org/openstack"
 kolla_dev_repos_pull: "no"
 kolla_dev_mode: "no"
-kolla_source_version: "{% if openstack_release == 'master' %}master{% else %}stable/{{ openstack_release }}{% endif %}"
+kolla_source_version: "{% if openstack_release == 'master' %}master{% else %}unmaintained/{{ openstack_release }}{% endif %}"
 
 # Proxy settings for containers such as magnum that need internet access
 container_http_proxy: ""
@@ -193,13 +193,21 @@ default_extra_volumes: []
 # Arbitrary unique number from 0..255
 keepalived_virtual_router_id: "51"
 
-
-#######################
+######################
 # Elasticsearch Options
 #######################
 elasticsearch_datadir_volume: "elasticsearch"
 
 elasticsearch_internal_endpoint: "{{ internal_protocol }}://{{ elasticsearch_address | put_address_in_context('url') }}:{{ elasticsearch_port }}"
+
+#######################
+## Opensearch Options
+########################
+opensearch_datadir_volume: "opensearch"
+
+opensearch_internal_endpoint: "{{ internal_protocol }}://{{ opensearch_address | put_address_in_context('url') }}:{{ opensearch_port }}"
+opensearch_dashboards_user: "opensearch"
+opensearch_log_index_prefix: "{{ kibana_log_prefix if kibana_log_prefix is defined else 'flog' }}"
 
 ###################
 # Messaging options
@@ -248,6 +256,7 @@ octavia_network_interface: "{{ 'o-hm0' if octavia_network_type == 'tenant' else 
 bifrost_network_interface: "{{ network_interface }}"
 dns_interface: "{{ network_interface }}"
 dpdk_tunnel_interface: "{{ neutron_external_interface }}"
+ironic_tftp_interface: "{{ api_interface }}"
 
 # Configure the address family (AF) per network.
 # Valid options are [ ipv4, ipv6 ]
@@ -262,11 +271,13 @@ octavia_network_address_family: "{{ api_address_family }}"
 bifrost_network_address_family: "{{ network_address_family }}"
 dns_address_family: "{{ network_address_family }}"
 dpdk_tunnel_address_family: "{{ network_address_family }}"
+ironic_tftp_address_family: "{{ api_address_family  }}"
 
 migration_interface_address: "{{ 'migration' | kolla_address }}"
 tunnel_interface_address: "{{ 'tunnel' | kolla_address }}"
 octavia_network_interface_address: "{{ 'octavia_network' | kolla_address }}"
 dpdk_tunnel_interface_address: "{{ 'dpdk_tunnel' | kolla_address }}"
+ironic_tftp_interface_address: "{{ 'ironic_tftp' | kolla_address }}"
 
 # Valid options are [ openvswitch, ovn, linuxbridge, vmware_nsxv, vmware_nsxv3, vmware_nsxp, vmware_dvs ]
 neutron_plugin_agent: "openvswitch"
@@ -395,6 +406,7 @@ mariadb_shard_group: "mariadb_{{ mariadb_shard_name }}"
 mariadb_loadbalancer: "haproxy"
 
 masakari_api_port: "15868"
+masakari_coordination_backend: "{{ 'redis' if enable_redis | bool else 'etcd' if enable_etcd | bool else '' }}"
 
 memcached_port: "11211"
 
@@ -435,6 +447,13 @@ octavia_external_fqdn: "{{ kolla_external_fqdn }}"
 octavia_api_port: "9876"
 octavia_api_listen_port: "{{ octavia_api_port }}"
 octavia_health_manager_port: "5555"
+
+# NOTE: If an external ElasticSearch cluster port is specified,
+# we default to using that port in services with ElasticSearch
+# endpoints. This is for backwards compatibility.
+opensearch_port: "{{ elasticsearch_port | default('9200') }}"
+opensearch_dashboards_port: "5601"
+opensearch_dashboards_port_external: "{{ opensearch_dashboards_port }}"
 
 ovn_nb_db_port: "6641"
 ovn_sb_db_port: "6642"
@@ -788,14 +807,22 @@ skip_stop_containers: []
 ####################
 
 elasticsearch_address: "{{ kolla_internal_fqdn }}"
-enable_elasticsearch: "{{ 'yes' if enable_central_logging | bool or enable_osprofiler | bool or enable_skydive | bool or enable_monasca | bool or (enable_cloudkitty | bool and cloudkitty_storage_backend == 'elasticsearch') else 'no' }}"
+enable_elasticsearch: "{{ 'yes' if not enable_opensearch | bool and (enable_central_logging | bool or enable_osprofiler | bool or enable_skydive | bool or enable_monasca | bool or (enable_cloudkitty | bool and cloudkitty_storage_backend == 'elasticsearch')) else 'no' }}"
 
 # If using Curator an actions file will need to be defined. Please see
 # the documentation.
 enable_elasticsearch_curator: "no"
 
-enable_kibana: "{{ 'yes' if enable_central_logging | bool or enable_monasca | bool else 'no' }}"
+enable_kibana: "{{ 'yes' if (enable_central_logging | bool and not enable_opensearch | bool) or enable_monasca | bool else 'no' }}"
 enable_kibana_external: "{{ enable_kibana | bool }}"
+
+# NOTE: If an external ElasticSearch cluster address is configured, all
+# services with ElasticSearch endpoints should be configured to log
+# to the external cluster by default. This is for backwards compatibility.
+opensearch_address: "{{ elasticsearch_address if elasticsearch_address is defined else kolla_internal_fqdn }}"
+enable_opensearch: "{{ kolla_base_distro == 'rocky' and enable_central_logging | bool }}"
+enable_opensearch_dashboards: "{{ enable_opensearch | bool }}"
+enable_opensearch_dashboards_external: "{{ enable_opensearch_dashboards | bool }}"
 
 ####################
 # Redis options
@@ -809,7 +836,8 @@ redis_connection_string_extras: "&db=0&socket_timeout=60&retry_on_timeout=yes"
 # valid values: ["elasticsearch", "redis"]
 osprofiler_backend: "elasticsearch"
 elasticsearch_connection_string: "elasticsearch://{{ elasticsearch_address | put_address_in_context('url') }}:{{ elasticsearch_port }}"
-osprofiler_backend_connection_string: "{{ redis_connection_string if osprofiler_backend == 'redis' else elasticsearch_connection_string }}"
+opensearch_connection_string: "elasticsearch://{{ opensearch_address | put_address_in_context('url') }}:{{ opensearch_port }}"
+osprofiler_backend_connection_string: "{{ redis_connection_string if osprofiler_backend == 'redis' else opensearch_connection_string if (enable_opensearch | bool) else elasticsearch_connection_string }}"
 
 ####################
 # RabbitMQ options
@@ -898,7 +926,7 @@ fernet_token_allow_expired_window: 172800
 # expiry and allow expired window, multiple active keys will be necessary.
 fernet_key_rotation_interval: "{{ fernet_token_expiry + fernet_token_allow_expired_window }}"
 
-keystone_default_user_role: "_member_"
+keystone_default_user_role: "member"
 
 # OpenStack authentication string. You should only need to override these if you
 # are changing the admin tenant/project or user.
@@ -1129,7 +1157,7 @@ enable_prometheus_alertmanager: "{{ enable_prometheus | bool }}"
 enable_prometheus_alertmanager_external: "{{ enable_prometheus_alertmanager | bool }}"
 enable_prometheus_ceph_mgr_exporter: "no"
 enable_prometheus_openstack_exporter: "{{ enable_prometheus | bool }}"
-enable_prometheus_elasticsearch_exporter: "{{ enable_prometheus | bool and enable_elasticsearch | bool }}"
+enable_prometheus_elasticsearch_exporter: "{{ enable_prometheus | bool and (enable_elasticsearch | bool or enable_opensearch | bool) }}"
 enable_prometheus_blackbox_exporter: "{{ enable_prometheus | bool }}"
 enable_prometheus_rabbitmq_exporter: "{{ enable_prometheus | bool and enable_rabbitmq | bool }}"
 enable_prometheus_libvirt_exporter: "{{ enable_prometheus | bool and enable_nova | bool and nova_compute_virt_type in ['kvm', 'qemu'] }}"
@@ -1159,7 +1187,7 @@ enable_vitrage_prometheus_datasource: "{{ enable_prometheus | bool }}"
 influxdb_address: "{{ kolla_internal_fqdn }}"
 influxdb_datadir_volume: "influxdb"
 
-infuxdb_internal_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ influxdb_http_port }}"
+influxdb_internal_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ influxdb_http_port }}"
 
 #################
 # Kafka options
@@ -1178,6 +1206,7 @@ distro_python_version_map: {
   "centos": "3.6",
   "debian": "3.9",
   "rhel": "3.6",
+  "rocky": "3.9",
   "ubuntu": "3.8"
 }
 

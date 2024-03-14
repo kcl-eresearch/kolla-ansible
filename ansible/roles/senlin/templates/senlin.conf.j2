@@ -14,6 +14,7 @@ workers = {{ openstack_service_workers }}
 
 [authentication]
 auth_url = {{ keystone_admin_url }}
+cafile = {{ openstack_cacert }}
 service_username = {{ senlin_keystone_user }}
 service_password = {{ senlin_keystone_password }}
 service_project_name = service
@@ -42,6 +43,7 @@ workers = {{ openstack_service_workers }}
 {% endif %}
 
 [keystone_authtoken]
+service_type = clustering
 www_authenticate_uri = {{ keystone_internal_url }}
 auth_url = {{ keystone_admin_url }}
 auth_type = password

@@ -10,7 +10,7 @@
     - name: set facts for commonly used variables
       vars:
         # NOTE(yoctozepto): needed here to use in other facts too
-        openstack_core_enabled: "{{ scenario not in ['bifrost', 'mariadb', 'prometheus-efk', 'monasca', 'venus'] }}"
+        openstack_core_enabled: "{{ scenario not in ['bifrost', 'mariadb', 'prometheus-efk', 'prometheus-opensearch', 'monasca', 'venus'] }}"
       set_fact:
         kolla_inventory_path: "/etc/kolla/inventory"
         logs_dir: "/tmp/logs"
@@ -18,7 +18,7 @@
         kolla_ansible_src_dir: "{{ ansible_env.PWD }}/src/{{ zuul.project.canonical_hostname }}/openstack/kolla-ansible"
         kolla_ansible_local_src_dir: "{{ zuul.executor.work_root }}/src/{{ zuul.project.canonical_hostname }}/openstack/kolla-ansible"
         infra_dockerhub_mirror: "http://{{ zuul_site_mirror_fqdn }}:8082/"
-        need_build_image: false
+        need_build_image: "{{ kolla_build_images | default(false) }}"
         build_image_tag: "change_{{ zuul.change | default('none') }}"
         openstack_core_enabled: "{{ openstack_core_enabled }}"
         openstack_core_tested: "{{ scenario in ['core', 'cephadm', 'zun', 'cells', 'swift', 'linuxbridge', 'ovn'] }}"
@@ -286,6 +286,7 @@
       copy:
         src: "{{ kolla_ansible_src_dir }}/etc/kolla/passwords.yml"
         dest: /etc/kolla/passwords.yml
+        mode: "0640"
         remote_src: true
 
     - name: generate passwords
@@ -549,7 +550,21 @@
             cmd: test-prometheus-efk.sh
             executable: /bin/bash
             chdir: "{{ kolla_ansible_src_dir }}"
+          environment:
+            KOLLA_ANSIBLE_VENV_PATH: "{{ kolla_ansible_venv_path }}"
+            OPENSEARCH_MIGRATION: "{{ opensearch_migration | default(False) }}"
           when: scenario == "prometheus-efk"
+
+        - name: Run test-prometheus-opensearch.sh script
+          script:
+            cmd: test-prometheus-opensearch.sh
+            executable: /bin/bash
+            chdir: "{{ kolla_ansible_src_dir }}"
+          environment:
+            TLS_ENABLED: "{{ tls_enabled }}"
+          when:
+            - not is_upgrade
+            - scenario == "prometheus-opensearch"
 
         - name: Run test-venus.sh script
           script:
@@ -676,6 +691,7 @@
           copy:
             src: "{{ kolla_ansible_src_dir }}/etc/kolla/passwords.yml"
             dest: /etc/kolla/passwords.yml
+            mode: "0640"
             remote_src: true
 
         - name: generate new passwords
@@ -725,6 +741,7 @@
             cmd: tests/test-swift.sh
             chdir: "{{ kolla_ansible_src_dir }}"
           when: scenario == 'swift'
+
       when: is_upgrade
 
     # Bifrost testing.

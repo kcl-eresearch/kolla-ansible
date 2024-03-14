@@ -126,6 +126,40 @@ function create_instance {
     fi
 }
 
+function resize_instance {
+    local name=$1
+
+    # TODO(priteau): Remove once previous_release includes m2.tiny in
+    # init-runonce
+    if ! openstack flavor list -f value | grep m2.tiny; then
+        openstack flavor create --id 6 --ram 512 --disk 1 --vcpus 2 m2.tiny
+    fi
+
+    openstack server resize --flavor m2.tiny --wait ${name}
+    # If the status is not VERIFY_RESIZE, print info and exit 1
+    if [[ $(openstack server show ${name} -f value -c status) != "VERIFY_RESIZE" ]]; then
+        echo "FAILED: Instance is not resized"
+        openstack --debug server show ${name}
+        return 1
+    fi
+
+    openstack server resize confirm ${name}
+
+    # Confirming the resize operation is not instantaneous. Wait for change to
+    # be reflected in server status.
+    attempt=1
+    while [[ $(openstack server show ${name} -f value -c status) != "ACTIVE" ]]; do
+        echo "Instance is not active yet"
+        attempt=$((attempt+1))
+        if [[ $attempt -eq 5 ]]; then
+            echo "FAILED: Instance failed to become active after resize confirm"
+            openstack --debug server show ${name}
+            return 1
+        fi
+        sleep 1
+    done
+}
+
 function delete_instance {
     local name=$1
     openstack server delete --wait ${name}
@@ -152,6 +186,33 @@ function detach_fip {
     openstack server remove floating ip ${instance_name} ${fip_addr}
 }
 
+function set_cirros_image_q35_machine_type {
+    openstack image set --property hw_machine_type=q35 cirros
+}
+
+function unset_cirros_image_q35_machine_type {
+    openstack image unset --property hw_machine_type cirros
+}
+
+function test_neutron_modules {
+    # Exit the function if scenario is "ovn" or if there's an upgrade
+    # as inly concerns ml2/ovs
+    if [[ $SCENARIO == "ovn" ]] || [[ $HAS_UPGRADE == "yes" ]]; then
+        return
+    fi
+
+    local modules
+    modules=( $(sed -n '/neutron_modules_extra:/,/^[^ ]/p' /etc/kolla/globals.yml | grep -oP '^  - name: \K[^ ]+' | tr -d "'") )
+    for module in "${modules[@]}"; do
+        if ! grep -q "^${module} " /proc/modules; then
+            echo "Error: Module $module is not loaded."
+            exit 1
+        else
+            echo "Module $module is loaded."
+        fi
+    done
+}
+
 function test_ssh {
     local instance_name=$1
     local fip_addr=$2
@@ -175,6 +236,10 @@ function test_ssh {
 
 function test_instance_boot {
     local fip_addr
+    local machine_type="${1}"
+    local fip_file="/tmp/kolla_ci_pre_upgrade_fip_addr${machine_type:+_$machine_type}"
+    local upgrade_instance_name="kolla_upgrade_test${machine_type:+_$machine_type}"
+    local volume_name="durable_volume${machine_type:+_$machine_type}"
 
     echo "TESTING: Server creation"
     create_instance kolla_boot_test
@@ -209,12 +274,12 @@ function test_instance_boot {
             echo "TESTING: Cinder volume upgrade stability (PHASE: $PHASE)"
 
             if [[ $PHASE == 'deploy' ]]; then
-                create_a_volume durable_volume
-                openstack volume show durable_volume
+                create_a_volume $volume_name
+                openstack volume show $volume_name
             elif [[ $PHASE == 'upgrade' ]]; then
-                openstack volume show durable_volume
-                attach_and_detach_a_volume durable_volume kolla_boot_test
-                delete_a_volume durable_volume
+                openstack volume show $volume_name
+                attach_and_detach_a_volume $volume_name kolla_boot_test
+                delete_a_volume $volume_name
             fi
 
             echo "SUCCESS: Cinder volume upgrade stability (PHASE: $PHASE)"
@@ -235,6 +300,10 @@ function test_instance_boot {
     delete_fip ${fip_addr}
     echo "SUCCESS: Floating ip deallocation"
 
+    echo "TESTING: Server resize"
+    resize_instance kolla_boot_test
+    echo "SUCCESS: Server resize"
+
     echo "TESTING: Server deletion"
     delete_instance kolla_boot_test
     echo "SUCCESS: Server deletion"
@@ -243,17 +312,17 @@ function test_instance_boot {
         echo "TESTING: Instance (Nova and Neutron) upgrade stability (PHASE: $PHASE)"
 
         if [[ $PHASE == 'deploy' ]]; then
-            create_instance kolla_upgrade_test
+            create_instance $upgrade_instance_name
             fip_addr=$(create_fip)
-            attach_fip kolla_upgrade_test ${fip_addr}
-            test_ssh kolla_upgrade_test ${fip_addr}  # tested to see if the instance has not just failed booting already
-            echo ${fip_addr} > /tmp/kolla_ci_pre_upgrade_fip_addr
+            attach_fip $upgrade_instance_name ${fip_addr}
+            test_ssh $upgrade_instance_name ${fip_addr}  # tested to see if the instance has not just failed booting already
+            echo ${fip_addr} > $fip_file
         elif [[ $PHASE == 'upgrade' ]]; then
-            fip_addr=$(cat /tmp/kolla_ci_pre_upgrade_fip_addr)
-            test_ssh kolla_upgrade_test ${fip_addr}
-            detach_fip kolla_upgrade_test ${fip_addr}
+            fip_addr=$(cat $fip_file)
+            test_ssh $upgrade_instance_name ${fip_addr}
+            detach_fip $upgrade_instance_name ${fip_addr}
             delete_fip ${fip_addr}
-            delete_instance kolla_upgrade_test
+            delete_instance $upgrade_instance_name
         fi
 
         echo "SUCCESS: Instance (Nova and Neutron) upgrade stability (PHASE: $PHASE)"
@@ -264,7 +333,15 @@ function test_openstack_logged {
     . /etc/kolla/admin-openrc.sh
     . ~/openstackclient-venv/bin/activate
     test_smoke
+    test_neutron_modules
     test_instance_boot
+
+    # Check for x86_64 architecture to run q35 tests
+    if [[ $(uname -m) == "x86_64" ]]; then
+        set_cirros_image_q35_machine_type
+        test_instance_boot q35
+        unset_cirros_image_q35_machine_type
+    fi
 }
 
 function test_openstack {
