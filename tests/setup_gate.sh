@@ -109,12 +109,12 @@ EOF
 
     mkdir -p /tmp/logs/build
 
-    sudo $CONTAINER_ENGINE run -d --net=host -e REGISTRY_HTTP_ADDR=0.0.0.0:4000 --restart=always -v /opt/kolla_registry/:/var/lib/registry --name registry registry:2
+    sudo $CONTAINER_ENGINE run -d --net=host -e REGISTRY_HTTP_ADDR=0.0.0.0:4000 --restart=always -v /opt/kolla_registry/:/var/lib/registry --name registry quay.io/libpod/registry:2.8.2
 
     python3 -m venv ~/kolla-venv
     . ~/kolla-venv/bin/activate
 
-    pip install "${KOLLA_SRC_DIR}"
+    pip install "${KOLLA_SRC_DIR}" "requests<2.32"
 
     sudo ~/kolla-venv/bin/kolla-build
 
