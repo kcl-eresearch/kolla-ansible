@@ -13,6 +13,9 @@ transport_url = {{ rpc_transport_url }}
 transport_url = {{ notify_transport_url }}
 
 [oslo_messaging_rabbit]
+{% if om_enable_queue_manager | bool %}
+use_queue_manager = true
+{% endif %}
 heartbeat_in_pthread = false
 {% if om_enable_rabbitmq_tls | bool %}
 ssl = true
@@ -23,20 +26,26 @@ amqp_durable_queues = true
 {% endif %}
 {% if om_enable_rabbitmq_quorum_queues | bool %}
 rabbit_quorum_queue = true
+{% if om_enable_rabbitmq_stream_fanout | bool %}
+rabbit_stream_fanout = true
+rabbit_qos_prefetch_count = {{ om_rabbitmq_qos_prefetch_count }}
+{% endif %}
+{% if om_enable_rabbitmq_transient_quorum_queue | bool %}
+rabbit_transient_quorum_queue = true
+{% endif %}
 {% endif %}
 
 [ironic]
 {% if ironic_enable_keystone_integration | bool %}
 auth_url = {{ keystone_internal_url }}
 auth_type = password
-project_domain_id = {{ default_project_domain_id }}
 user_domain_id = {{ default_user_domain_id }}
-project_name = service
 username = {{ ironic_inspector_keystone_user }}
 password = {{ ironic_inspector_keystone_password }}
 valid_interfaces = internal
 cafile = {{ openstack_cacert }}
 region_name = {{ openstack_region_name }}
+system_scope = all
 {% else %}
 auth_type = none
 endpoint_override = {{ ironic_internal_endpoint }}
@@ -89,5 +98,7 @@ backend_url = {{ redis_connection_string }}
 # NOTE(yoctozepto): we must use etcd3gw (aka etcd3+http) due to issues with alternative (etcd3) and eventlet (as used by cinder)
 # see https://bugs.launchpad.net/kolla-ansible/+bug/1854932
 # and https://review.opendev.org/466098 for details
-backend_url = etcd3+{{ internal_protocol }}://{{ kolla_internal_fqdn }}:{{ etcd_client_port }}{% if openstack_cacert %}?ca_cert={{ openstack_cacert }}{% endif %}
+# NOTE(jan.gutter): etcd v3.4 removed the default `v3alpha` api_version. Until
+# tooz defaults to a newer version, we should explicitly specify `v3`
+backend_url = etcd3+{{ internal_protocol }}://{{ kolla_internal_fqdn }}:{{ etcd_client_port }}?api_version=v3{% if openstack_cacert %}?ca_cert={{ openstack_cacert }}{% endif %}
 {% endif %}

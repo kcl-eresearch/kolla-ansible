@@ -12,7 +12,9 @@
   register: result
   changed_when: false
   check_mode: false
-  when: inventory_hostname in groups['baremetal']
+  when:
+    - kolla_container_engine == 'docker'
+    - inventory_hostname in groups['baremetal']
   failed_when: result is failed
                or result.stdout | regex_replace('.*\\b(\\d+\\.\\d+\\.\\d+)\\b.*', '\\1') is version(docker_version_min, '<')
 
@@ -66,6 +68,14 @@
   run_once: True
   fail:
     msg: |
-      Please set only one of om_enable_rabbitmq_high_availability or om_enable_rabbitmq_quorum_queues or none of them.
+      Please set only one of om_enable_rabbitmq_high_availability or om_enable_rabbitmq_quorum_queues
+  when: (om_enable_rabbitmq_high_availability | bool) == (om_enable_rabbitmq_quorum_queues | bool)
+
+- name: Validate rabbitmq quorum/stream variables
+  run_once: True
+  fail:
+    msg: |
+      om_enable_rabbitmq_transient_quorum_queue must be enabled when using om_enable_rabbitmq_stream_fanout
   when:
-    - (om_enable_rabbitmq_high_availability | bool) == (om_enable_rabbitmq_quorum_queues | bool) and (om_enable_rabbitmq_high_availability | bool)
+    - om_enable_rabbitmq_stream_fanout | bool
+    - not om_enable_rabbitmq_transient_quorum_queue | bool

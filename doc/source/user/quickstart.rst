@@ -6,7 +6,7 @@ Quick Start for deployment/evaluation
 
 This guide provides step by step instructions to deploy OpenStack using Kolla
 Ansible on bare metal servers or virtual machines. For developers we have the
-:kolla-ansible-doc:`developer quickstart <user/quickstart-development.rst>`.
+:kolla-ansible-doc:`developer quickstart <user/quickstart-development.html>`.
 
 Recommended reading
 ~~~~~~~~~~~~~~~~~~~
@@ -90,11 +90,13 @@ Install dependencies for the virtual environment
       pip install -U pip
 
 #. Install `Ansible <http://www.ansible.com>`__. Kolla Ansible requires at least
-   Ansible ``6`` and supports up to ``7``.
+   Ansible ``|ANSIBLE_VERSION_MIN|`` (or ansible-core
+   ``|ANSIBLE_CORE_VERSION_MIN|``) and supports up to ``|ANSIBLE_VERSION_MAX|``
+   (or ansible-core ``|ANSIBLE_CORE_VERSION_MAX|``).
 
    .. code-block:: console
 
-      pip install 'ansible>=6,<8'
+      pip install 'ansible-core>=|ANSIBLE_CORE_VERSION_MIN|,<|ANSIBLE_CORE_VERSION_MAX|.99'
 
 
 Install Kolla-ansible

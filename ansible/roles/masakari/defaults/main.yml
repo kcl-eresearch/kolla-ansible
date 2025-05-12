@@ -13,11 +13,14 @@ masakari_services:
         mode: "http"
         external: false
         port: "{{ masakari_api_port }}"
+        listen_port: "{{ masakari_api_listen_port }}"
       masakari_api_external:
         enabled: "{{ enable_masakari }}"
         mode: "http"
         external: true
-        port: "{{ masakari_api_port }}"
+        external_fqdn: "{{ masakari_external_fqdn }}"
+        port: "{{ masakari_api_public_port }}"
+        listen_port: "{{ masakari_api_listen_port }}"
   masakari-engine:
     container_name: masakari_engine
     group: masakari-engine
@@ -105,12 +108,14 @@ masakari_api_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/masakari/masakari:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/masakari' if masakari_dev_mode | bool else '' }}"
 masakari_engine_default_volumes:
   - "{{ node_config_directory }}/masakari-engine/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/masakari/masakari:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/masakari' if masakari_dev_mode | bool else '' }}"
   - "masakari:/var/lib/masakari/"
 masakari_instancemonitor_default_volumes:
@@ -118,20 +123,22 @@ masakari_instancemonitor_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/masakari-monitors/masakarimonitors:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/masakarimonitors' if masakari_dev_mode | bool else '' }}"
 masakari_hostmonitor_default_volumes:
   - "{{ node_config_directory }}/masakari-hostmonitor/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/masakari-monitors/masakarimonitors:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/masakarimonitors' if masakari_dev_mode | bool else '' }}"
 
 
 ####################
 # OpenStack
 ####################
-masakari_internal_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ masakari_api_port }}"
-masakari_public_endpoint: "{{ public_protocol }}://{{ kolla_external_fqdn | put_address_in_context('url') }}:{{ masakari_api_port }}"
+masakari_internal_endpoint: "{{ masakari_internal_fqdn | kolla_url(internal_protocol, masakari_api_port) }}"
+masakari_public_endpoint: "{{ masakari_external_fqdn | kolla_url(public_protocol, masakari_api_public_port) }}"
 
 masakari_logging_debug: "{{ openstack_logging_debug }}"
 

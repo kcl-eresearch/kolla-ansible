@@ -7,39 +7,6 @@ set -o pipefail
 # Enable unbuffered output for Ansible in Jenkins.
 export PYTHONUNBUFFERED=1
 
-
-function setup_openstack_clients {
-    # Prepare virtualenv for openstack deployment tests
-    local packages=(python-openstackclient python-heatclient)
-    if [[ $SCENARIO == zun ]]; then
-        packages+=(python-zunclient)
-    fi
-    if [[ $SCENARIO == ironic ]]; then
-        packages+=(python-ironicclient python-ironic-inspector-client)
-    fi
-    if [[ $SCENARIO == magnum ]]; then
-        packages+=(python-designateclient python-magnumclient python-troveclient)
-    fi
-    if [[ $SCENARIO == octavia ]]; then
-        packages+=(python-octaviaclient)
-    fi
-    if [[ $SCENARIO == masakari ]]; then
-        packages+=(python-masakariclient)
-    fi
-    if [[ $SCENARIO == scenario_nfv ]]; then
-        packages+=(python-tackerclient python-barbicanclient python-mistralclient)
-    fi
-    if [[ $SCENARIO == ovn ]]; then
-        packages+=(python-octaviaclient)
-    fi
-    if [[ "debian" == $BASE_DISTRO ]]; then
-        sudo apt -y install python3-venv
-    fi
-    python3 -m venv ~/openstackclient-venv
-    ~/openstackclient-venv/bin/pip install -U pip
-    ~/openstackclient-venv/bin/pip install -c $UPPER_CONSTRAINTS ${packages[@]}
-}
-
 function prepare_images {
     if [[ "${BUILD_IMAGE}" == "False" ]]; then
         return
@@ -52,7 +19,7 @@ function prepare_images {
     fi
 
     if [[ $SCENARIO == "cephadm" ]]; then
-        GATE_IMAGES+=",^cinder"
+        GATE_IMAGES+=",^cinder,^redis"
     fi
 
     if [[ $SCENARIO == "cells" ]]; then
@@ -70,13 +37,13 @@ function prepare_images {
         GATE_IMAGES+=",^aodh,^tacker,^mistral,^redis,^barbican"
     fi
     if [[ $SCENARIO == "ironic" ]]; then
-        GATE_IMAGES+=",^dnsmasq,^ironic,^iscsid"
+        GATE_IMAGES+=",^dnsmasq,^ironic,^iscsid,^prometheus"
     fi
     if [[ $SCENARIO == "magnum" ]]; then
         GATE_IMAGES+=",^designate,^magnum,^trove"
     fi
     if [[ $SCENARIO == "octavia" ]]; then
-        GATE_IMAGES+=",^octavia"
+        GATE_IMAGES+=",^redis,^octavia"
     fi
     if [[ $SCENARIO == "masakari" ]]; then
         GATE_IMAGES+=",^masakari-,^hacluster-"
@@ -87,11 +54,15 @@ function prepare_images {
     fi
 
     if [[ $SCENARIO == "ovn" ]]; then
-        GATE_IMAGES+=",^octavia,^ovn"
+        GATE_IMAGES+=",^redis,^octavia,^ovn"
     fi
 
     if [[ $SCENARIO == "mariadb" ]]; then
         GATE_IMAGES="^cron,^fluentd,^haproxy,^keepalived,^kolla-toolbox,^mariadb"
+    fi
+
+    if [[ $SCENARIO == "lets-encrypt" ]]; then
+        GATE_IMAGES+=",^letsencrypt,^haproxy"
     fi
 
     if [[ $SCENARIO == "prometheus-opensearch" ]]; then
@@ -99,7 +70,28 @@ function prepare_images {
     fi
 
     if [[ $SCENARIO == "venus" ]]; then
-        GATE_IMAGES="^cron,^elasticsearch,^fluentd,^haproxy,^keepalived,^keystone,^kolla-toolbox,^mariadb,^memcached,^rabbitmq,^venus"
+        GATE_IMAGES="^cron,^opensearch,^fluentd,^haproxy,^keepalived,^keystone,^kolla-toolbox,^mariadb,^memcached,^rabbitmq,^venus"
+    fi
+
+    if [[ $SCENARIO == "skyline" ]]; then
+        GATE_IMAGES+=",^skyline"
+    fi
+
+    sudo tee -a /etc/kolla/kolla-build.conf <<EOF
+[DEFAULT]
+engine = ${CONTAINER_ENGINE}
+EOF
+
+    if [[ $BASE_DISTRO == "debian" || $BASE_DISTRO == "ubuntu" ]]; then
+        sudo tee -a /etc/kolla/kolla-build.conf <<EOF
+base_image = quay.io/openstack.kolla/${BASE_DISTRO}
+EOF
+    fi
+
+    if [[ $BASE_DISTRO_TAG != "" ]]; then
+        sudo tee -a /etc/kolla/kolla-build.conf <<EOF
+base_tag = ${BASE_DISTRO_TAG}
+EOF
     fi
 
     sudo tee -a /etc/kolla/kolla-build.conf <<EOF
@@ -107,14 +99,19 @@ function prepare_images {
 gate = ${GATE_IMAGES}
 EOF
 
-    mkdir -p /tmp/logs/build
+    sudo mkdir -p /tmp/logs/build
+    sudo mkdir -p /opt/kolla_registry
 
     sudo $CONTAINER_ENGINE run -d --net=host -e REGISTRY_HTTP_ADDR=0.0.0.0:4000 --restart=always -v /opt/kolla_registry/:/var/lib/registry --name registry quay.io/libpod/registry:2.8.2
 
-    python3 -m venv ~/kolla-venv
-    . ~/kolla-venv/bin/activate
 
-    pip install "${KOLLA_SRC_DIR}" "requests<2.32"
+    python3 -m venv ~/kolla-venv
+    source ~/kolla-venv/bin/activate
+    if [[ "$CONTAINER_ENGINE" == "docker" ]]; then
+        pip install "${KOLLA_SRC_DIR}" "docker<7" "requests<2.32"
+    else
+        pip install "${KOLLA_SRC_DIR}" "podman"
+    fi
 
     sudo ~/kolla-venv/bin/kolla-build
 
@@ -129,8 +126,6 @@ EOF
     deactivate
 }
 
-
-setup_openstack_clients
 
 RAW_INVENTORY=/etc/kolla/inventory
 

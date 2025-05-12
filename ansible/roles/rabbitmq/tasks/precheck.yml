@@ -11,7 +11,6 @@
     container_engine: "{{ kolla_container_engine }}"
     name:
       - rabbitmq
-      - outward_rabbitmq
   check_mode: false
   register: container_facts
 
@@ -105,101 +104,6 @@
     - not kolla_externally_managed_cert | bool
     - rabbitmq_enable_tls | bool
 
-- name: Checking free port for outward RabbitMQ
-  wait_for:
-    host: "{{ api_interface_address }}"
-    port: "{{ outward_rabbitmq_port }}"
-    connect_timeout: 1
-    state: stopped
-  when:
-    - enable_outward_rabbitmq | bool
-    - inventory_hostname in groups['outward-rabbitmq']
-    - container_facts['outward_rabbitmq'] is not defined
-
-- name: Checking free port for outward RabbitMQ Management
-  wait_for:
-    host: "{{ api_interface_address }}"
-    port: "{{ outward_rabbitmq_management_port }}"
-    connect_timeout: 1
-    state: stopped
-  when:
-    - enable_outward_rabbitmq | bool
-    - inventory_hostname in groups['outward-rabbitmq']
-    - container_facts['outward_rabbitmq'] is not defined
-
-- name: Checking free port for outward RabbitMQ Cluster
-  wait_for:
-    host: "{{ api_interface_address }}"
-    port: "{{ outward_rabbitmq_cluster_port }}"
-    connect_timeout: 1
-    state: stopped
-  when:
-    - enable_outward_rabbitmq | bool
-    - inventory_hostname in groups['outward-rabbitmq']
-    - container_facts['outward_rabbitmq'] is not defined
-
-- name: Checking free port for outward RabbitMQ EPMD
-  wait_for:
-    host: "{{ api_interface_address }}"
-    port: "{{ outward_rabbitmq_epmd_port }}"
-    connect_timeout: 1
-    state: stopped
-  when:
-    - enable_outward_rabbitmq | bool
-    - inventory_hostname in groups['outward-rabbitmq']
-    - container_facts['outward_rabbitmq'] is not defined
-
-- name: Check if all outward rabbit hostnames are resolvable
-  vars:
-    nss_database: "{{ 'ahostsv4' if api_address_family == 'ipv4' else 'ahostsv6' }}"
-  command: "getent {{ nss_database }} {{ hostvars[item].ansible_facts.hostname }}"
-  changed_when: false
-  check_mode: false
-  register: outward_rabbitmq_hostnames
-  with_items: "{{ groups['outward-rabbitmq'] }}"
-  when:
-    - enable_outward_rabbitmq | bool
-
-- name: Check if each rabbit hostname resolves uniquely to the proper IP address
-  fail:
-    msg: Hostname has to resolve uniquely to the IP address of api_interface
-  with_subelements:
-    - "{{ outward_rabbitmq_hostnames.results }}"
-    - stdout_lines
-  when:
-    - enable_outward_rabbitmq | bool
-    - not item.1 is match('^'+('api' | kolla_address(item.0.item))+'\\b')
-
-- name: Check if TLS certificate exists for outward RabbitMQ
-  assert:
-    that: cert | length > 0
-    fail_msg: No TLS certificate provided for outward RabbitMQ.
-  vars:
-    cert: "{{ query('first_found', paths, errors='ignore') }}"
-    paths:
-      - "{{ kolla_certificates_dir }}/{{ inventory_hostname }}/outward_rabbitmq-cert.pem"
-      - "{{ kolla_certificates_dir }}/{{ inventory_hostname }}-cert.pem"
-      - "{{ kolla_certificates_dir }}/outward_rabbitmq-cert.pem"
-  when:
-    - not kolla_externally_managed_cert | bool
-    - enable_outward_rabbitmq | bool
-    - rabbitmq_enable_tls | bool
-
-- name: Check if TLS key exists for outward RabbitMQ
-  assert:
-    that: key | length > 0
-    msg: No TLS key provided for outward RabbitMQ.
-  vars:
-    key: "{{ query('first_found', paths, errors='ignore') }}"
-    paths:
-      - "{{ kolla_certificates_dir }}/{{ inventory_hostname }}/outward_rabbitmq-key.pem"
-      - "{{ kolla_certificates_dir }}/{{ inventory_hostname }}-key.pem"
-      - "{{ kolla_certificates_dir }}/outward_rabbitmq-key.pem"
-  when:
-    - not kolla_externally_managed_cert | bool
-    - enable_outward_rabbitmq | bool
-    - rabbitmq_enable_tls | bool
-
 - block:
     - name: List RabbitMQ policies
       become: true
@@ -215,7 +119,7 @@
           om_enable_rabbitmq_high_availability is True but no mirroring policy has been found.
           Currently the procedure to migrate from transient non-mirrored queues to durable mirrored queues is manual.
           Please follow the process described here: https://docs.openstack.org/kolla-ansible/latest/reference/message-queues/rabbitmq.html#high-availability.
-          Note that this process may take several hours on larger systems, and may cause a degredation in performance at large scale.
+          Note that this process may take several hours on larger systems, and may cause a degradation in performance at large scale.
           If you do not wish to enable this feature, set om_enable_rabbitmq_high_availability to False.
 
   run_once: true
@@ -238,14 +142,45 @@
         fail_msg: >
           om_enable_rabbitmq_quorum_queues is True but {{ item.name }} is a non-quorum queue.
           Currently the procedure to migrate to quorum queues is manual.
-          Please follow the process described here: https://docs.openstack.org/kolla-ansible/2023.1/reference/message-queues/rabbitmq.html#high-availability.
-          Note that this process may take several hours on larger systems, and may cause a degredation in performance at large scale.
+          Please follow the process described here: https://docs.openstack.org/kolla-ansible/latest/reference/message-queues/rabbitmq.html#high-availability.
+          Note that this process may take several hours on larger systems, and may cause a degradation in performance at large scale.
           If you do not wish to enable this feature, set om_enable_rabbitmq_quorum_queues to False.
       loop: "{{ (rabbitmq_queues.stdout | from_json) if rabbitmq_queues is not skipped else [] }}"
       loop_control:
         label: "{{ item.name }}"
-      # TODO(mattcress): remove skipping reply and fanout once https://review.opendev.org/c/openstack/oslo.messaging/+/888479 is merged.
-      when: not (item.name is search('reply_') or item.name is search('_fanout_'))
+      when: not (item.name is search('reply_') or item.name is search('_fanout'))
+
+    - name: Check if RabbitMQ quorum queues for transient queues need to be configured
+      assert:
+        that: "{{ item.type == 'quorum' }}"
+        fail_msg: >
+          om_enable_rabbitmq_transient_quorum_queue is True but {{ item.name }} is a non-quorum queue.
+          Currently the procedure to migrate to quorum queues is manual.
+          Please follow the process described here: https://docs.openstack.org/kolla-ansible/latest/reference/message-queues/rabbitmq.html#high-availability.
+          Note that this process may take several hours on larger systems, and may cause a degradation in performance at large scale.
+          If you do not wish to enable this feature, set om_enable_rabbitmq_transient_quorum_queue to False.
+      loop: "{{ (rabbitmq_queues.stdout | from_json) if rabbitmq_queues is not skipped else [] }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - item.name is search('reply_') or (item.name is search('_fanout') and not om_enable_rabbitmq_stream_fanout | bool)
+        - om_enable_rabbitmq_transient_quorum_queue | bool
+
+    - name: Check if RabbitMQ streams need to be configured
+      assert:
+        that: "{{ item.type == 'stream' }}"
+        fail_msg: >
+          om_enable_rabbitmq_stream_fanout is True but {{ item.name }} is not a stream.
+          Currently the procedure to migrate to streams is manual.
+          Please follow the process described here: https://docs.openstack.org/kolla-ansible/latest/reference/message-queues/rabbitmq.html#high-availability.
+          Note that this process may take several hours on larger systems.
+          If you do not wish to enable this feature, set om_enable_rabbitmq_stream_fanout to False.
+      loop: "{{ (rabbitmq_queues.stdout | from_json) if rabbitmq_queues is not skipped else [] }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - item.name is search('_fanout')
+        - om_enable_rabbitmq_stream_fanout | bool
 
   run_once: true
   when:

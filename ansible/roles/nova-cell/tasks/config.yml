@@ -77,6 +77,7 @@
       - "{{ node_custom_config }}/nova.conf"
       - "{{ node_custom_config }}/nova/{{ item.key }}.conf"
       - "{{ node_custom_config }}/nova/{{ inventory_hostname }}/nova.conf"
+      - "{{ node_custom_config }}/nova/{{ inventory_hostname }}/{{ item.key }}.conf"
     dest: "{{ node_config_directory }}/{{ item.key }}/nova.conf"
     mode: "0660"
   when:
@@ -193,6 +194,21 @@
         - "{{ node_custom_config }}/nova_compute/release"
         - "{{ node_custom_config }}/nova/release"
       skip: true
+  when:
+    - inventory_hostname in groups[service.group]
+    - service.enabled | bool
+  notify:
+    - Restart nova-compute container
+
+- name: Generating 'hostnqn' file for nova_compute
+  vars:
+    hostnqn: "nqn.2014-08.org.nvmexpress:uuid:{{ ansible_facts.hostname | to_uuid }}"
+    service: "{{ nova_cell_services['nova-compute'] }}"
+  template:
+    src: "templates/hostnqn.j2"
+    dest: "{{ node_config_directory }}/nova-compute/hostnqn"
+    mode: "0660"
+  become: true
   when:
     - inventory_hostname in groups[service.group]
     - service.enabled | bool

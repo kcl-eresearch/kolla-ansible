@@ -14,11 +14,14 @@ watcher_services:
         mode: "http"
         external: false
         port: "{{ watcher_api_port }}"
+        listen_port: "{{ watcher_api_listen_port }}"
       watcher_api_external:
         enabled: "{{ enable_watcher }}"
         mode: "http"
         external: true
-        port: "{{ watcher_api_port }}"
+        external_fqdn: "{{ watcher_external_fqdn }}"
+        port: "{{ watcher_api_public_port }}"
+        listen_port: "{{ watcher_api_listen_port }}"
   watcher-applier:
     container_name: watcher_applier
     group: watcher-applier
@@ -130,18 +133,21 @@ watcher_api_default_volumes:
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/watcher/watcher:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/watcher' if watcher_dev_mode | bool else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 watcher_applier_default_volumes:
   - "{{ node_config_directory }}/watcher-applier/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/watcher/watcher:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/watcher' if watcher_dev_mode | bool else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 watcher_engine_default_volumes:
   - "{{ node_config_directory }}/watcher-engine/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/watcher/watcher:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/watcher' if watcher_dev_mode | bool else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 
 watcher_extra_volumes: "{{ default_extra_volumes }}"
 watcher_api_extra_volumes: "{{ watcher_extra_volumes }}"
@@ -151,8 +157,8 @@ watcher_engine_extra_volumes: "{{ watcher_extra_volumes }}"
 ####################
 # OpenStack
 ####################
-watcher_internal_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ watcher_api_port }}"
-watcher_public_endpoint: "{{ public_protocol }}://{{ kolla_external_fqdn | put_address_in_context('url') }}:{{ watcher_api_port }}"
+watcher_internal_endpoint: "{{ watcher_internal_fqdn | kolla_url(internal_protocol, watcher_api_port) }}"
+watcher_public_endpoint: "{{ watcher_external_fqdn | kolla_url(public_protocol, watcher_api_public_port) }}"
 
 watcher_logging_debug: "{{ openstack_logging_debug }}"
 

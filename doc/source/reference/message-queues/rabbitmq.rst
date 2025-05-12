@@ -122,17 +122,36 @@ RabbitMQ offers two options to configure HA:
 There are some queue types which are intentionally not mirrored
 using the exclusionary pattern ``^(?!(amq\\.)|(.*_fanout_)|(reply_)).*``.
 
-After enabling one of these values on a running system, there are some
-additional steps needed to migrate from transient to durable queues.
+In the Epoxy release of Kolla, the version of RabbitMQ will be updated to 4.0.
+As a result, all queues must be migrated to a durable type prior to upgrading
+to Epoxy. This can be done by setting the following options and then following
+the migration procedure outlined below.
+
+.. code-block:: console
+
+   om_enable_queue_manager: true
+   om_enable_rabbitmq_quorum_queues: true
+   om_enable_rabbitmq_transient_quorum_queue: true
+   om_enable_rabbitmq_stream_fanout: true
+
+RabbitMQ also offer queues called streams, which can be used to replace
+"fanout" queues with a more performant alternative. This will be enabled by
+default in Epoxy, and we strongly suggest above to enable this too. However, it
+remains configurable so can be disabled by instead setting
+``om_enable_rabbitmq_stream_fanout: false``. When changing queues to a
+different type, the follow procedure will be needed.
 
 .. warning::
 
-   If you choose to enable quorum queues on an existing RabbitMQ cluster,
-   the following procedure is required to be carried out before an upgrade.
+   Since the default changed to have all queues be of durable type in the Epoxy
+   release, following procedure is required to be carried out before any
+   upgrade to Epoxy.
 
-   Notice, that the default will be changed from non-HA to Quorum queues in the
-   Bobcat release. This means that you will also need to perform this migration
-   before a SLURP upgrade to Caracal.
+.. warning::
+
+   Since the default changed from non-HA to Quorum queues in Bobcat release,
+   following procedure is required to be carried out before a SLURP upgrade to
+   Caracal.
 
 1. Stop all OpenStack services which use RabbitMQ, so that they will not
    attempt to recreate any queues yet.
@@ -147,7 +166,7 @@ additional steps needed to migrate from transient to durable queues.
 
       kolla-ansible genconfig
 
-3. Reconfigure RabbitMQ if you are using
+3. Reconfigure RabbitMQ if you were previously using
    ``om_enable_rabbitmq_high_availability``.
 
    .. code-block:: console
@@ -170,6 +189,11 @@ additional steps needed to migrate from transient to durable queues.
 
 SLURP
 ~~~~~
+
+.. note::
+
+   The version of RabbitMQ did not increase in Dalmatian, so this will not be
+   needed for a skip-level upgrade to Epoxy.
 
 RabbitMQ has two major version releases per year but does not support jumping
 two versions in one upgrade. So if you want to perform a skip-level upgrade,

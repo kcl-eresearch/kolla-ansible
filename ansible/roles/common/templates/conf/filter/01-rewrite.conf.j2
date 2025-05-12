@@ -8,17 +8,12 @@
   </rule>
   <rule>
     key     programname
-    pattern ^(aodh_wsgi_access|barbican_api_uwsgi_access|zun_api_wsgi_access|vitrage_wsgi_access)$
+    pattern ^(aodh_wsgi_access|barbican_api_uwsgi_access|zun_api_wsgi_access)$
     tag wsgi_access
   </rule>
   <rule>
     key     programname
     pattern ^(nova-api|nova-compute|nova-compute-ironic|nova-conductor|nova-manage|nova-novncproxy|nova-scheduler|nova-placement-api|placement-api|privsep-helper)$
-    tag openstack_python
-  </rule>
-  <rule>
-    key     programname
-    pattern ^(sahara-api|sahara-engine)$
     tag openstack_python
   </rule>
   <rule>
@@ -98,22 +93,7 @@
   </rule>
   <rule>
     key     programname
-    pattern ^(murano-api|murano-engine)$
-    tag openstack_python
-  </rule>
-  <rule>
-    key     programname
-    pattern ^(senlin-api|senlin-conductor|senlin-engine|senlin-health-manager)$
-    tag openstack_python
-  </rule>
-  <rule>
-    key     programname
     pattern ^(watcher-api|watcher-applier|watcher-db-manage|watcher-decision-engine)$
-    tag openstack_python
-  </rule>
-  <rule>
-    key     programname
-    pattern ^(freezer-api|freezer-api_access|freezer-manage)$
     tag openstack_python
   </rule>
   <rule>
@@ -146,11 +126,6 @@
     pattern ^(tacker-server|tacker-conductor)$
     tag openstack_python
   </rule>
-  <rule>
-    key     programname
-    pattern ^(vitrage-ml|vitrage-notifier|vitrage-graph|vitrage-persistor)$
-    tag openstack_python
-</rule>
   <rule>
     key     programname
     pattern ^(blazar-api|blazar-manager)$

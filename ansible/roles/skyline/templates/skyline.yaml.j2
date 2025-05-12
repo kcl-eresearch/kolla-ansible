@@ -5,6 +5,12 @@ default:
   database_url: mysql://{{ skyline_database_user }}:{{ skyline_database_password }}@{{ skyline_database_address }}/{{ skyline_database_name }}
   debug: {{ skyline_logging_debug }}
   log_dir: {{ log_dir }}
+{% if enable_prometheus | bool  %}
+  prometheus_basic_auth_password: "{{ prometheus_skyline_password }}"
+  prometheus_basic_auth_user: "{{ prometheus_skyline_user }}"
+  prometheus_enable_basic_auth: true
+  prometheus_endpoint: "{{ prometheus_internal_endpoint }}"
+{% endif %}
   secret_key: {{ skyline_secret_key }}
   session_name: {{ skyline_session_name }}
 openstack:
@@ -47,11 +53,17 @@ openstack:
 {% if enable_trove | bool %}
     database: trove
 {% endif %}
+{% if enable_designate | bool %}
+    dns: designate
+{% endif %}
 {% if enable_keystone | bool %}
     identity: keystone
 {% endif %}
 {% if enable_glance | bool %}
     image: glance
+{% endif %}
+{% if enable_masakari | bool %}
+    instance-ha: masakari
 {% endif %}
 {% if enable_barbican | bool %}
     key-manager: barbican
@@ -62,7 +74,7 @@ openstack:
 {% if enable_neutron | bool %}
     network: neutron
 {% endif %}
-{% if enable_swift | bool %}
+{% if enable_swift | bool or enable_ceph_rgw | bool %}
     object-store: swift
 {% endif %}
 {% if enable_heat | bool %}
@@ -76,6 +88,12 @@ openstack:
 {% endif %}
 {% if enable_cinder | bool %}
     volumev3: cinder
+{% endif %}
+  sso_enabled: {{ skyline_enable_sso | bool }}
+{% if skyline_enable_sso | bool %}
+  sso_protocols:
+    - openid
+  sso_region: {{ openstack_region_name }}
 {% endif %}
   system_admin_roles:
 {% for skyline_system_admin_role in skyline_system_admin_roles %}

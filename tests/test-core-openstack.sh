@@ -8,6 +8,7 @@ set -o pipefail
 export PYTHONUNBUFFERED=1
 
 function test_smoke {
+    openstack --debug endpoint list
     openstack --debug compute service list
     openstack --debug network agent list
     openstack --debug orchestration service list
@@ -245,7 +246,7 @@ function unset_cirros_image_q35_machine_type {
 
 function test_neutron_modules {
     # Exit the function if scenario is "ovn" or if there's an upgrade
-    # as inly concerns ml2/ovs
+    # as it only concerns ml2/ovs
     if [[ $SCENARIO == "ovn" ]] || [[ $HAS_UPGRADE == "yes" ]]; then
         return
     fi
@@ -407,13 +408,83 @@ function test_instance_boot {
     fi
 }
 
-function test_keystone_admin_endpoint {
-    echo "TESTING: Keystone admin endpoint removal"
-    if [[ $(openstack endpoint list --service keystone --interface admin -f value | wc -l) -ne 0 ]]; then
-        echo "ERROR: Found Keystone admin endpoint"
-        exit 1
+function test_internal_dns_integration {
+
+    # As per test globals - neutron integration is turned off
+    if openstack extension list --network -f value -c Alias | grep -q dns-integration; then
+        DNS_NAME="my-port"
+        PORT_NAME="${DNS_NAME}"
+        DNS_DOMAIN=$(awk -F ':' '/neutron_dns_domain:/ { print $2 }' /etc/kolla/globals.yml \
+                    | sed -e 's/"//g' -e "s/'//g" -e "s/\ *//g")
+
+        openstack network create dns-test-network
+        openstack subnet create --network dns-test-network --subnet-range 192.168.88.0/24 dns-test-subnet
+        openstack port create --network dns-test-network --dns-name ${DNS_NAME} ${PORT_NAME}
+
+        DNS_ASSIGNMENT=$(openstack port show ${DNS_NAME} -f json -c dns_assignment)
+        FQDN=$(echo ${DNS_ASSIGNMENT} | python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["dns_assignment"][0]["fqdn"]);')
+        HOSTNAME=$(echo ${DNS_ASSIGNMENT} | python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["dns_assignment"][0]["hostname"]);')
+
+        if [ "${DNS_NAME}.${DNS_DOMAIN}" == "${FQDN}" ]; then
+            echo "[i] Test neutron internal DNS integration FQDN check port - PASS"
+        else
+            echo "[e] Test neutron internal DNS integration FQDN check port - FAIL"
+            exit 1
+        fi
+
+        if [ "${DNS_NAME}" == "${HOSTNAME}" ]; then
+            echo "[i] Test neutron internal DNS integration HOSTNAME check port - PASS"
+        else
+            echo "[e] Test neutron internal DNS integration HOSTNAME check port - FAIL"
+            exit 1
+        fi
+
+        openstack port delete ${PORT_NAME}
+
+        SERVER_NAME="my_vm"
+        SERVER_NAME_SANITIZED=$(echo ${SERVER_NAME} | sed -e 's/_/-/g')
+
+        openstack server create --image cirros --flavor m1.tiny --network dns-test-network ${SERVER_NAME}
+
+        SERVER_ID=$(openstack server show ${SERVER_NAME} -f value -c id)
+        attempt=0
+        while [[ -z $(openstack port list --device-id ${SERVER_ID} -f value -c ID) ]]; do
+            echo "Port for server ${SERVER_NAME} not available yet"
+            attempt=$((attempt+1))
+            if [[ $attempt -eq 10 ]]; then
+                echo "ERROR: Port for server ${SERVER_NAME} failed to become available"
+                openstack port list --device-id ${SERVER_ID}
+                return 1
+            fi
+            sleep $attempt
+        done
+        PORT_ID=$(openstack port list --device-id ${SERVER_ID} -f value -c ID)
+
+        DNS_ASSIGNMENT=$(openstack port show ${PORT_ID} -f json -c dns_assignment)
+        FQDN=$(echo ${DNS_ASSIGNMENT} | python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["dns_assignment"][0]["fqdn"]);')
+        HOSTNAME=$(echo ${DNS_ASSIGNMENT} | python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["dns_assignment"][0]["hostname"]);')
+
+        if [ "${SERVER_NAME_SANITIZED}.${DNS_DOMAIN}" == "${FQDN}" ]; then
+            echo "[i] Test neutron internal DNS integration FQDN check instance create - PASS"
+        else
+            echo "[e] Test neutron internal DNS integration FQDN check instance create - FAIL"
+            exit 1
+        fi
+
+        if [ "${SERVER_NAME_SANITIZED}" == "${HOSTNAME}" ]; then
+            echo "[i] Test neutron internal DNS integration HOSTNAME check instance create - PASS"
+        else
+            echo "[e] Test neutron internal DNS integration HOSTNAME check instance create - FAIL"
+            exit 1
+        fi
+
+        openstack server delete --wait ${SERVER_NAME}
+        openstack subnet delete dns-test-subnet
+        openstack network delete dns-test-network
+
+    else
+        echo "[i] DNS Integration is not enabled."
     fi
-    echo "SUCCESS: Keystone admin endpoint removal"
 }
 
 function test_openstack_logged {
@@ -422,7 +493,7 @@ function test_openstack_logged {
     test_smoke
     test_neutron_modules
     test_instance_boot
-    test_keystone_admin_endpoint
+    test_internal_dns_integration
 
     # Check for x86_64 architecture to run q35 tests
     if [[ $(uname -m) == "x86_64" ]]; then

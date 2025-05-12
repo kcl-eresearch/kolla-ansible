@@ -78,24 +78,6 @@ Limitations and Recommendations
    ``ceph_nova_keyring: ceph.client.nova.keyring`` and ``ceph_nova_user: nova``
    in ``/etc/kolla/globals.yml``
 
-Ubuntu Jammy 22.04
-------------------
-
-The Zed release adds support for Ubuntu Jammy 22.04 as a host operating
-system. Ubuntu Jammy 22.04 support was also added to the Yoga stable
-release. Ubuntu Focal 20.04 users upgrading from Yoga can thus directly
-upgrade to Ubuntu Jammy 22.04 on the host and then upgrade to the Zed release.
-
-
-CentOS Stream 8
----------------
-
-The Wallaby release adds support for CentOS Stream 8 as a host operating
-system. CentOS Stream 8 support will also be added to a Victoria stable
-release. CentOS Linux users upgrading from Victoria should first migrate hosts
-and container images from CentOS Linux to CentOS Stream before upgrading to
-Wallaby.
-
 Preparation (the foreword)
 --------------------------
 
@@ -122,6 +104,13 @@ First, upgrade the ``kolla-ansible`` package:
 
    If you are running from Git repository, then just checkout the desired
    branch and run ``pip3 install --upgrade`` with the repository directory.
+
+If performing a skip-level (SLURP) upgrade, update ``ansible`` or
+``ansible-core`` to a version supported by the release you're upgrading to.
+
+.. code-block:: console
+
+   pip3 install --upgrade 'ansible-core>=|ANSIBLE_CORE_VERSION_MIN|,<|ANSIBLE_CORE_VERSION_MAX|.99'
 
 If upgrading to a Yoga release or later, install or upgrade Ansible Galaxy
 dependencies:
@@ -266,6 +255,10 @@ necessary update containers, without generating configuration.
 
 ``kolla-ansible -i INVENTORY prune-images`` is used to prune orphaned Docker
 images on hosts.
+
+``kolla-ansible -i INVENTORY genconfig`` is used to generate configuration
+files for enabled OpenStack services, without then restarting the containers so
+it is not applied right away.
 
 ``kolla-ansible -i INVENTORY1 -i INVENTORY2 ...`` Multiple inventories can be
 specified by passing the ``--inventory`` or ``-i`` command line option multiple

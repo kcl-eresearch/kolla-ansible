@@ -35,7 +35,7 @@
 
 - name: Stop backup keepalived container
   become: true
-  kolla_docker:
+  kolla_container:
     action: "stop_container"
     # NOTE(yoctozepto): backup node might not have keepalived yet - ignore
     ignore_missing: true
@@ -53,7 +53,7 @@
 
 - name: Stop backup haproxy container
   become: true
-  kolla_docker:
+  kolla_container:
     action: "stop_container"
     # NOTE(kevko): backup node might not have haproxy yet - ignore
     ignore_missing: true
@@ -69,7 +69,7 @@
 
 - name: Stop backup proxysql container
   become: true
-  kolla_docker:
+  kolla_container:
     action: "stop_container"
     # NOTE(kevko): backup node might not have proxysql yet - ignore
     ignore_missing: true
@@ -92,7 +92,7 @@
     service_name: "haproxy"
     service: "{{ loadbalancer_services[service_name] }}"
   become: true
-  kolla_docker:
+  kolla_container:
     action: "recreate_or_restart_container"
     common_options: "{{ docker_common_options }}"
     name: "{{ service.container_name }}"
@@ -122,7 +122,7 @@
     service_name: "proxysql"
     service: "{{ loadbalancer_services[service_name] }}"
   become: true
-  kolla_docker:
+  kolla_container:
     action: "recreate_or_restart_container"
     common_options: "{{ docker_common_options }}"
     name: "{{ service.container_name }}"
@@ -156,7 +156,7 @@
     service_name: "keepalived"
     service: "{{ loadbalancer_services[service_name] }}"
   become: true
-  kolla_docker:
+  kolla_container:
     action: "recreate_or_restart_container"
     common_options: "{{ docker_common_options }}"
     name: "{{ service.container_name }}"
@@ -178,7 +178,7 @@
 # to the VIP address.
 - name: Stop master haproxy container
   become: true
-  kolla_docker:
+  kolla_container:
     action: "stop_container"
     # NOTE(yoctozepto): master node might not have haproxy yet - ignore
     ignore_missing: true
@@ -194,7 +194,7 @@
 
 - name: Stop master proxysql container
   become: true
-  kolla_docker:
+  kolla_container:
     action: "stop_container"
     common_options: "{{ docker_common_options }}"
     name: "proxysql"
@@ -209,7 +209,7 @@
 
 - name: Stop master keepalived container
   become: true
-  kolla_docker:
+  kolla_container:
     action: "stop_container"
     common_options: "{{ docker_common_options }}"
     name: "keepalived"
@@ -226,7 +226,7 @@
     service_name: "haproxy"
     service: "{{ loadbalancer_services[service_name] }}"
   become: true
-  kolla_docker:
+  kolla_container:
     action: "recreate_or_restart_container"
     common_options: "{{ docker_common_options }}"
     name: "{{ service.container_name }}"
@@ -256,7 +256,7 @@
     service_name: "proxysql"
     service: "{{ loadbalancer_services[service_name] }}"
   become: true
-  kolla_docker:
+  kolla_container:
     action: "recreate_or_restart_container"
     common_options: "{{ docker_common_options }}"
     name: "{{ service.container_name }}"
@@ -286,7 +286,7 @@
     service_name: "keepalived"
     service: "{{ loadbalancer_services[service_name] }}"
   become: true
-  kolla_docker:
+  kolla_container:
     action: "recreate_or_restart_container"
     common_options: "{{ docker_common_options }}"
     name: "{{ service.container_name }}"
@@ -327,3 +327,19 @@
     - service.enabled | bool
   listen:
     - Wait for virtual IP to appear
+
+- name: Restart haproxy-ssh container
+  vars:
+    service_name: "haproxy-ssh"
+    service: "{{ loadbalancer_services[service_name] }}"
+  become: true
+  kolla_container:
+    action: "recreate_or_restart_container"
+    common_options: "{{ docker_common_options }}"
+    name: "{{ service.container_name }}"
+    image: "{{ service.image }}"
+    volumes: "{{ service.volumes | reject('equalto', '') | list }}"
+    dimensions: "{{ service.dimensions }}"
+    healthcheck: "{{ service.healthcheck | default(omit) }}"
+  when:
+    - kolla_action != "config"

@@ -14,11 +14,14 @@ mistral_services:
         mode: "http"
         external: false
         port: "{{ mistral_api_port }}"
+        listen_port: "{{ mistral_api_listen_port }}"
       mistral_api_external:
         enabled: "{{ enable_mistral }}"
         mode: "http"
         external: true
-        port: "{{ mistral_api_port }}"
+        external_fqdn: "{{ mistral_external_fqdn }}"
+        port: "{{ mistral_api_public_port }}"
+        listen_port: "{{ mistral_api_listen_port }}"
   mistral-engine:
     container_name: mistral_engine
     group: mistral-engine
@@ -155,24 +158,28 @@ mistral_engine_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/mistral/mistral:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/mistral' if mistral_dev_mode | bool else '' }}"
 mistral_event_engine_default_volumes:
   - "{{ node_config_directory }}/mistral-event-engine/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/mistral/mistral:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/mistral' if mistral_dev_mode | bool else '' }}"
 mistral_executor_default_volumes:
   - "{{ node_config_directory }}/mistral-executor/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/mistral/mistral:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/mistral' if mistral_dev_mode | bool else '' }}"
 mistral_api_default_volumes:
   - "{{ node_config_directory }}/mistral-api/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/mistral/mistral:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/mistral' if mistral_dev_mode | bool else '' }}"
 
 mistral_extra_volumes: "{{ default_extra_volumes }}"
@@ -184,10 +191,10 @@ mistral_api_extra_volumes: "{{ mistral_extra_volumes }}"
 ####################
 # OpenStack
 ####################
-mistral_internal_base_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ mistral_api_port }}"
+mistral_internal_base_endpoint: "{{ mistral_internal_fqdn | kolla_url(internal_protocol, mistral_api_port) }}"
 
 mistral_internal_endpoint: "{{ mistral_internal_base_endpoint }}/v2"
-mistral_public_endpoint: "{{ public_protocol }}://{{ kolla_external_fqdn | put_address_in_context('url') }}:{{ mistral_api_port }}/v2"
+mistral_public_endpoint: "{{ mistral_external_fqdn | kolla_url(public_protocol, mistral_api_public_port, '/v2') }}"
 
 mistral_logging_debug: "{{ openstack_logging_debug }}"
 

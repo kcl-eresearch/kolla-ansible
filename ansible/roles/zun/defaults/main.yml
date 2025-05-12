@@ -14,11 +14,14 @@ zun_services:
         mode: "http"
         external: false
         port: "{{ zun_api_port }}"
+        listen_port: "{{ zun_api_listen_port }}"
       zun_api_external:
         enabled: "{{ enable_zun }}"
         mode: "http"
         external: true
-        port: "{{ zun_api_port }}"
+        external_fqdn: "{{ zun_external_fqdn }}"
+        port: "{{ zun_api_public_port }}"
+        listen_port: "{{ zun_api_listen_port }}"
   zun-wsproxy:
     container_name: zun_wsproxy
     group: zun-wsproxy
@@ -44,7 +47,7 @@ zun_services:
     enabled: true
     image: "{{ zun_compute_image_full }}"
     privileged: True
-    volumes: "{{ zun_compute_default_volumes + zun_compute_extra_volumes }}"
+    volumes: "{{ zun_compute_default_volumes + zun_compute_extra_volumes + lookup('vars', 'run_default_volumes_' + kolla_container_engine) }}"
     dimensions: "{{ zun_compute_dimensions }}"
     healthcheck: "{{ zun_compute_healthcheck }}"
   zun-cni-daemon:
@@ -53,7 +56,7 @@ zun_services:
     enabled: true
     image: "{{ zun_cni_daemon_image_full }}"
     privileged: True
-    volumes: "{{ zun_cni_daemon_default_volumes + zun_cni_daemon_extra_volumes }}"
+    volumes: "{{ zun_cni_daemon_default_volumes + zun_cni_daemon_extra_volumes + lookup('vars', 'run_default_volumes_' + kolla_container_engine) }}"
     dimensions: "{{ zun_cni_daemon_dimensions }}"
     healthcheck: "{{ zun_cni_daemon_healthcheck }}"
 
@@ -170,19 +173,21 @@ zun_api_default_volumes:
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/zun/zun:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/zun' if zun_dev_mode | bool else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 zun_wsproxy_default_volumes:
   - "{{ node_config_directory }}/zun-wsproxy/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/zun/zun:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/zun' if zun_dev_mode | bool else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 zun_compute_default_volumes:
   - "{{ node_config_directory }}/zun-compute/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
   - "{{ kolla_dev_repos_directory ~ '/zun/zun:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/zun' if zun_dev_mode | bool else '' }}"
-  - "/run:/run:shared"
+  - "/run:/run{{ ':shared' if kolla_container_engine == 'docker' else '' }}"
   - "/usr/lib/docker:/usr/lib/docker"
   - "/var/lib/docker:/var/lib/docker"
   - "/lib/modules:/lib/modules:ro"
@@ -194,8 +199,9 @@ zun_cni_daemon_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/zun/zun:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/zun' if zun_dev_mode | bool else '' }}"
-  - "/run:/run:shared"
+  - "/run:/run{{ ':shared' if kolla_container_engine == 'docker' else '' }}"
 
 zun_extra_volumes: "{{ default_extra_volumes }}"
 zun_api_extra_volumes: "{{ zun_extra_volumes }}"
@@ -206,8 +212,8 @@ zun_cni_daemon_extra_volumes: "{{ zun_extra_volumes }}"
 ####################
 ## OpenStack
 ####################
-zun_internal_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ zun_api_port }}/v1/"
-zun_public_endpoint: "{{ public_protocol }}://{{ kolla_external_fqdn | put_address_in_context('url') }}:{{ zun_api_port }}/v1/"
+zun_internal_endpoint: "{{ zun_internal_fqdn | kolla_url(internal_protocol, zun_api_port, '/v1/') }}"
+zun_public_endpoint: "{{ zun_external_fqdn | kolla_url(public_protocol, zun_api_public_port, '/v1/') }}"
 
 zun_logging_debug: "{{ openstack_logging_debug }}"
 
@@ -241,3 +247,5 @@ zun_ks_users:
     user: "{{ zun_keystone_user }}"
     password: "{{ zun_keystone_password }}"
     role: "admin"
+
+zun_ceph_cluster: "ceph"

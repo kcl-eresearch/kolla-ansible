@@ -87,6 +87,47 @@ created and configured by Ansible (this is also necessary when
 ``neutron_external_interface`` is configured correctly for hosts in the
 ``compute`` group.
 
+Internal DNS resolution
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The Networking service enables users to control the name assigned
+to ports using two attributes associated with ports, networks, and
+floating IPs. The following table shows the attributes available for each
+one of these resources:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 30
+
+   * - Resource
+     - dns_name
+     - dns_domain
+   * - Ports
+     - Yes
+     - Yes
+   * - Networks
+     - No
+     - Yes
+   * - Floating IPs
+     - Yes
+     - Yes
+
+To enable this functionality, you need to set the following in
+``/etc/kolla/globals.yml``:
+
+.. code-block:: yaml
+
+   neutron_dns_integration: "yes"
+   neutron_dns_domain: "example.org."
+
+.. important::
+   The ``neutron_dns_domain`` value has to be different to ``openstacklocal``
+   (its default value) and has to end with a period ``.``.
+
+.. note::
+   The integration of the Networking service with an external DNSaaS (DNS-as-a-Service)
+   is described in :ref:`designate-guide`.
+
 OpenvSwitch (ml2/ovs)
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -131,7 +172,7 @@ network outages caused by all agents restarting at the same time. The exact
 length of time it takes to restart is dependent on hardware and the number of
 routers present. A general rule of thumb is to set the value to ``40 + 3n``
 where ``n`` is the number of routers. For example, with 5 routers,
-``40 + (3 * 5) = 65`` so the value could be set to 65. A much better approach
+``40 + (3 * 5) = 55`` so the value could be set to 55. A much better approach
 however would be to first time how long an outage lasts, then set the value
 accordingly.
 
@@ -184,7 +225,7 @@ Mellanox Infiniband (ml2/mlnx)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In order to add ``mlnx_infiniband`` to the list of mechanism driver
-for ``neutron`` to support Infiniband virtual funtions, you need to
+for ``neutron`` to support Infiniband virtual functions, you need to
 set the following (assuming neutron SR-IOV agent is also enabled using
 ``enable_neutron_sriov`` flag):
 

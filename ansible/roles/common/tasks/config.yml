@@ -27,6 +27,69 @@
   when:
     - kolla_copy_ca_into_containers | bool
 
+- name: Copying over /run subdirectories conf
+  become: true
+  template:
+    src: kolla-directories.conf.j2
+    dest: /etc/tmpfiles.d/kolla.conf
+  when: kolla_container_engine == 'podman'
+
+- name: Restart systemd-tmpfiles
+  become: true
+  command: systemd-tmpfiles --create
+  when: kolla_container_engine == 'podman'
+
+- name: Ensure fluentd image is present for label check
+  vars:
+    service_name: "fluentd"
+    service: "{{ common_services[service_name] }}"
+  become: true
+  kolla_container:
+    action: "ensure_image"
+    common_options: "{{ docker_common_options }}"
+    image: "{{ service.image }}"
+  when: enable_fluentd | bool
+
+- name: Fetch fluentd Docker image labels
+  vars:
+    service_name: "fluentd"
+    service: "{{ common_services[service_name] }}"
+  become: true
+  docker_image_info:
+    name: "{{ service.image }}"
+  register: fluentd_labels_docker
+  when:
+    - kolla_container_engine == "docker"
+    - enable_fluentd | bool
+
+- name: Set fluentd facts
+  set_fact:
+    fluentd_cmd: "{{ fluentd_labels_docker.images[0].Config.Labels.fluentd_binary | default(fluentd_labels_docker.images[0].ContainerConfig.Labels.fluentd_binary) | default('td-agent') }}"
+    fluentd_user: "{{ fluentd_labels_docker.images[0].Config.Labels.fluentd_user | default(fluentd_labels_docker.images[0].ContainerConfig.Labels.fluentd_user) | default('td-agent') }}"
+  when:
+    - kolla_container_engine == "docker"
+    - enable_fluentd | bool
+
+- name: Fetch fluentd Podman image labels
+  vars:
+    service_name: "fluentd"
+    service: "{{ common_services[service_name] }}"
+  become: true
+  podman_image_info:
+    name: "{{ service.image }}"
+  register: fluentd_labels_podman
+  when:
+    - kolla_container_engine == "podman"
+    - enable_fluentd | bool
+
+- name: Set fluentd facts
+  set_fact:
+    fluentd_cmd: "{{ fluentd_labels_podman.images[0].Config.Labels.fluentd_binary | default('td-agent') }}"
+    fluentd_user: "{{ fluentd_labels_podman.images[0].Config.Labels.fluentd_user | default('td-agent') }}"
+  when:
+    - kolla_container_engine == "podman"
+    - enable_fluentd | bool
+
 - name: Copying over config.json files for services
   template:
     src: "{{ item.key }}.json.j2"
@@ -100,6 +163,10 @@
         enabled: "{{ enable_prometheus_fluentd_integration | bool }}"
       - name: "conf/input/10-openvswitch.conf.j2"
         enabled: true
+      - name: "conf/input/11-letsencrypt.conf.j2"
+        enabled: "{{ enable_letsencrypt | bool }}"
+      - name: "conf/input/12-systemd.conf.j2"
+        enabled: "{{ enable_fluentd_systemd | bool }}"
     customised_input_files: "{{ find_custom_fluentd_inputs.files | map(attribute='path') | list }}"
     # Filters
     fluentd_filter_files: "{{ default_filter_files | customise_fluentd(customised_filter_files) }}"
@@ -155,7 +222,6 @@
       - { name: "designate", enabled: "{{ enable_designate | bool }}" }
       - { name: "etcd", enabled: "{{ enable_etcd | bool }}" }
       - { name: "fluentd", enabled: "{{ enable_fluentd | bool }}" }
-      - { name: "freezer", enabled: "{{ enable_freezer | bool }}" }
       - { name: "glance", enabled: "{{ enable_glance | bool }}" }
       - { name: "glance-tls-proxy", enabled: "{{ glance_enable_tls_backend | bool }}" }
       - { name: "gnocchi", enabled: "{{ enable_gnocchi | bool }}" }
@@ -174,7 +240,6 @@
       - { name: "mariadb", enabled: "{{ enable_mariadb | bool }}" }
       - { name: "masakari", enabled: "{{ enable_masakari | bool }}" }
       - { name: "mistral", enabled: "{{ enable_mistral | bool }}" }
-      - { name: "murano", enabled: "{{ enable_murano | bool }}" }
       - { name: "neutron", enabled: "{{ enable_neutron | bool }}" }
       - { name: "neutron-tls-proxy", enabled: "{{ neutron_enable_tls_backend | bool }}" }
       - { name: "nova", enabled: "{{ enable_nova | bool }}" }
@@ -182,20 +247,16 @@
       - { name: "octavia", enabled: "{{ enable_octavia | bool }}" }
       - { name: "opensearch", enabled: "{{ enable_opensearch | bool or enable_opensearch_dashboards | bool }}" }
       - { name: "openvswitch", enabled: "{{ enable_openvswitch | bool }}" }
-      - { name: "outward-rabbitmq", enabled: "{{ enable_outward_rabbitmq | bool }}" }
       - { name: "placement", enabled: "{{ enable_placement | bool }}" }
       - { name: "prometheus", enabled: "{{ enable_prometheus | bool }}" }
       - { name: "proxysql", enabled: "{{ enable_proxysql | bool }}" }
       - { name: "rabbitmq", enabled: "{{ enable_rabbitmq | bool }}" }
-      - { name: "sahara", enabled: "{{ enable_sahara | bool }}" }
-      - { name: "senlin", enabled: "{{ enable_senlin | bool }}" }
+      - { name: "redis", enabled: "{{ enable_redis | bool }}" }
       - { name: "skyline", enabled: "{{ enable_skyline | bool }}" }
-      - { name: "solum", enabled: "{{ enable_solum | bool }}" }
       - { name: "swift", enabled: "{{ enable_swift | bool }}" }
       - { name: "tacker", enabled: "{{ enable_tacker | bool }}" }
       - { name: "trove", enabled: "{{ enable_trove | bool }}" }
       - { name: "venus", enabled: "{{ enable_venus | bool }}" }
-      - { name: "vitrage", enabled: "{{ enable_vitrage | bool }}" }
       - { name: "watcher", enabled: "{{ enable_watcher | bool }}" }
       - { name: "zun", enabled: "{{ enable_zun | bool }}" }
   template:

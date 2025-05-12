@@ -120,18 +120,21 @@ cyborg_api_default_volumes:
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "cyborg:/var/lib/cyborg/"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 
 cyborg_agent_default_volumes:
   - "{{ node_config_directory }}/cyborg-agent/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 
 cyborg_conductor_default_volumes:
   - "{{ node_config_directory }}/cyborg-conductor/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
 
 cyborg_extra_volumes: "{{ default_extra_volumes }}"
 cyborg_api_extra_volumes: "{{ cyborg_extra_volumes }}"
@@ -141,8 +144,8 @@ cyborg_conductor_extra_volumes: "{{ cyborg_extra_volumes }}"
 ####################
 # OpenStack
 ####################
-cyborg_internal_endpoint: "{{ internal_protocol }}://{{ kolla_internal_fqdn | put_address_in_context('url') }}:{{ cyborg_api_port }}/v2"
-cyborg_public_endpoint: "{{ public_protocol }}://{{ kolla_external_fqdn | put_address_in_context('url') }}:{{ cyborg_api_port }}/v2"
+cyborg_internal_endpoint: "{{ cyborg_internal_fqdn | kolla_url(internal_protocol, cyborg_api_port, '/v2') }}"
+cyborg_public_endpoint: "{{ cyborg_external_fqdn | kolla_url(public_protocol, cyborg_api_port, '/v2') }}"
 
 cyborg_logging_debug: "{{ openstack_logging_debug }}"
 

@@ -44,6 +44,7 @@
          --skip-monitoring-stack
          --skip-dashboard
          --skip-firewalld
+         --log-to-file
          --mon-ip {{ mon_ip }}
   become: True
   register: cephadm_bootstrap_output
@@ -52,7 +53,7 @@
   vars:
     regexp: 'Cluster fsid: (.*)'
   set_fact:
-    ceph_fsid: "{{ cephadm_bootstrap_output.stdout | regex_search(regexp,'\\1') | first }}"
+    ceph_fsid: "{{ cephadm_bootstrap_output.stdout | regex_search(regexp, '\\1') | first }}"
 
 - name: Template out cluster spec
   template:

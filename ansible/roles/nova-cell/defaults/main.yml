@@ -8,7 +8,7 @@ nova_cell_services:
     pid_mode: "host"
     cgroupns_mode: "host"
     privileged: True
-    volumes: "{{ nova_libvirt_default_volumes + nova_libvirt_extra_volumes }}"
+    volumes: "{{ nova_libvirt_default_volumes + nova_libvirt_extra_volumes + lookup('vars', 'run_default_volumes_' + kolla_container_engine) }}"
     dimensions: "{{ nova_libvirt_dimensions }}"
     healthcheck: "{{ nova_libvirt_healthcheck }}"
   nova-ssh:
@@ -59,7 +59,7 @@ nova_cell_services:
     privileged: True
     enabled: "{{ not enable_nova_fake | bool }}"
     ipc_mode: "host"
-    volumes: "{{ nova_compute_default_volumes + nova_compute_extra_volumes }}"
+    volumes: "{{ nova_compute_default_volumes + nova_compute_extra_volumes + lookup('vars', 'run_default_volumes_' + kolla_container_engine) }}"
     dimensions: "{{ nova_compute_dimensions }}"
     healthcheck: "{{ nova_compute_healthcheck }}"
   nova-compute-ironic:
@@ -371,8 +371,9 @@ nova_libvirt_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "/lib/modules:/lib/modules:ro"
-  - "/run/:/run/:shared"
+  - "/run:/run{{ ':shared' if kolla_container_engine == 'docker' else '' }}"
   - "/dev:/dev"
+  - "{{ 'devpts:/dev/pts' if kolla_container_engine == 'podman' else '' }}"
   - "/sys/fs/cgroup:/sys/fs/cgroup"
   - "kolla_logs:/var/log/kolla/"
   - "libvirtd:/var/lib/libvirt"
@@ -393,31 +394,35 @@ nova_novncproxy_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/nova/nova:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/nova' if nova_dev_mode | bool else '' }}"
 nova_spicehtml5proxy_default_volumes:
   - "{{ node_config_directory }}/nova-spicehtml5proxy/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/nova/nova:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/nova' if nova_dev_mode | bool else '' }}"
 nova_serialproxy_default_volumes:
   - "{{ node_config_directory }}/nova-serialproxy/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/nova/nova:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/nova' if nova_dev_mode | bool else '' }}"
 nova_conductor_default_volumes:
   - "{{ node_config_directory }}/nova-conductor/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/nova/nova:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/nova' if nova_dev_mode | bool else '' }}"
 nova_compute_default_volumes:
   - "{{ node_config_directory }}/nova-compute/:{{ container_config_directory }}/:ro"
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "/lib/modules:/lib/modules:ro"
-  - "/run:/run:shared"
+  - "/run:/run{{ ':shared' if kolla_container_engine == 'docker' else '' }}"
   - "/dev:/dev"
   - "kolla_logs:/var/log/kolla/"
   - "{% if enable_iscsid | bool %}iscsi_info:/etc/iscsi{% endif %}"
@@ -430,6 +435,7 @@ nova_compute_ironic_default_volumes:
   - "/etc/localtime:/etc/localtime:ro"
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
+  - "{{ '/dev/shm:/dev/shm' if om_enable_queue_manager | bool else '' }}"
   - "{{ kolla_dev_repos_directory ~ '/nova/nova:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/nova' if nova_dev_mode | bool else '' }}"
 # Used by bootstrapping containers.
 nova_cell_bootstrap_default_volumes:
@@ -438,6 +444,7 @@ nova_cell_bootstrap_default_volumes:
   - "{{ '/etc/timezone:/etc/timezone:ro' if ansible_facts.os_family == 'Debian' else '' }}"
   - "kolla_logs:/var/log/kolla/"
   - "{{ kolla_dev_repos_directory ~ '/nova/nova:/var/lib/kolla/venv/lib/python' ~ distro_python_version ~ '/site-packages/nova' if nova_dev_mode | bool else '' }}"
+  - "{{ 'nova-cell:/var/lib/script/' if kolla_container_engine == 'podman' else '' }}"
 
 nova_extra_volumes: "{{ default_extra_volumes }}"
 nova_libvirt_extra_volumes: "{{ nova_extra_volumes }}"
@@ -523,10 +530,10 @@ nova_notification_topics:
     enabled: "{{ enable_ceilometer | bool or enable_neutron_infoblox_ipam_agent | bool }}"
   - name: "{{ designate_notifications_topic_name }}"
     enabled: "{{ designate_enable_notifications_sink | bool }}"
-  - name: vitrage_notifications
-    enabled: "{{ enable_vitrage | bool }}"
 
 nova_enabled_notification_topics: "{{ nova_notification_topics | selectattr('enabled', 'equalto', true) | list }}"
+
+nova_ceph_cluster: "ceph"
 
 ####################
 # VMware
@@ -548,7 +555,7 @@ libvirt_tls: false
 # also means the deployer is responsible for restarting the nova_compute and
 # nova_libvirt containers when the key changes, as we can't know when to do that
 libvirt_tls_manage_certs: true
-# When using tls we are verfiying the hostname we are connected to matches the
+# When using tls we are verifying the hostname we are connected to matches the
 # libvirt cert we are presented.  As such we can't use IP's here, but keep the
 # ability for people to override the hostname to use.
 migration_hostname: "{{ ansible_facts.nodename }}"
@@ -575,7 +582,7 @@ nova_dev_mode: "{{ kolla_dev_mode }}"
 nova_source_version: "{{ kolla_source_version }}"
 
 ###################################
-# Enable Shared Bind Propogation
+# Enable Shared Bind Propagation
 ###################################
 
 enable_shared_var_lib_nova_mnt: "{{ enable_cinder_backend_nfs | bool or enable_cinder_backend_quobyte | bool }}"

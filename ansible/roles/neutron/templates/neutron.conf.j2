@@ -61,10 +61,8 @@ transport_url = {{ rpc_transport_url }}
 router_distributed = True
 {% endif %}
 
-{% if enable_designate | bool %}
-{% if designate_ns_record is string %}
-dns_domain = {{ designate_ns_record }}.
-{% endif %}
+dns_domain = {{ neutron_dns_domain }}
+{% if enable_designate | bool and neutron_dns_integration | bool %}
 external_dns_driver = designate
 {% if neutron_plugin_agent == 'vmware_nsxv' %}
 nsx_extension_drivers = vmware_nsxv_dns
@@ -134,6 +132,9 @@ driver = noop
 {% endif %}
 
 [oslo_messaging_rabbit]
+{% if om_enable_queue_manager | bool %}
+use_queue_manager = true
+{% endif %}
 heartbeat_in_pthread = false
 {% if om_enable_rabbitmq_tls | bool %}
 ssl = true
@@ -144,6 +145,13 @@ amqp_durable_queues = true
 {% endif %}
 {% if om_enable_rabbitmq_quorum_queues | bool %}
 rabbit_quorum_queue = true
+{% if om_enable_rabbitmq_stream_fanout | bool %}
+rabbit_stream_fanout = true
+rabbit_qos_prefetch_count = {{ om_rabbitmq_qos_prefetch_count }}
+{% endif %}
+{% if om_enable_rabbitmq_transient_quorum_queue | bool %}
+rabbit_transient_quorum_queue = true
+{% endif %}
 {% endif %}
 
 {% if neutron_policy_file is defined %}
