@@ -198,7 +198,6 @@ keystone_enabled_notification_topics: "{{ keystone_notification_topics | selecta
 # Keystone
 ####################
 keystone_service_endpoints:
-  - {'interface': 'admin', 'url': '{{ keystone_internal_url }}', 'state': 'absent'}
   - {'interface': 'internal', 'url': '{{ keystone_internal_url }}'}
   - {'interface': 'public', 'url': '{{ keystone_public_url }}'}
 

@@ -32,4 +32,3 @@
   when:
     - set_sysctl | bool
     - (neutron_l3_agent.enabled | bool and neutron_l3_agent.host_in_groups | bool)
-    - not ('ipv6' in item.name and ipv6_disabled.stdout | bool)
